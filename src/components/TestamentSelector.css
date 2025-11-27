@@ -98,6 +98,21 @@
     font-weight: 700;
 }
 
+.testament-progress-ring {
+    position: absolute;
+    right: 1.5rem;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+}
+
+.testament-progress-circle {
+    opacity: 0.8;
+    transition: stroke-dashoffset 0.016s linear;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}
+
 /* Overlays */
 .overlay {
     position: fixed;
@@ -257,6 +272,11 @@
     box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
 }
 
+.chapter-item.selected {
+    background: rgba(0, 212, 255, 0.3);
+    border-color: #00d4ff;
+}
+
 .hover-progress-small {
     position: absolute;
     inset: -3px;
@@ -279,20 +299,58 @@
     }
 }
 
+/* Verse Grid (same styling as chapter) */
+.verse-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(50px, 1fr));
+    gap: 0.6rem;
+    padding: 1rem;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.verse-item {
+    aspect-ratio: 1;
+    background: rgba(255, 255, 255, 0.05);
+    border: 2px solid transparent;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+    position: relative;
+}
+
+.verse-item:active {
+    transform: scale(0.95);
+}
+
+.verse-item.hovered {
+    background: rgba(0, 212, 255, 0.2);
+    border-color: #00d4ff;
+    box-shadow: 0 0 15px rgba(0, 212, 255, 0.4);
+}
+
 /* Custom scrollbar */
 .book-list::-webkit-scrollbar,
-.chapter-grid::-webkit-scrollbar {
+.chapter-grid::-webkit-scrollbar,
+.verse-grid::-webkit-scrollbar {
     width: 6px;
 }
 
 .book-list::-webkit-scrollbar-track,
-.chapter-grid::-webkit-scrollbar-track {
+.chapter-grid::-webkit-scrollbar-track,
+.verse-grid::-webkit-scrollbar-track {
     background: rgba(255, 255, 255, 0.05);
     border-radius: 3px;
 }
 
 .book-list::-webkit-scrollbar-thumb,
-.chapter-grid::-webkit-scrollbar-thumb {
+.chapter-grid::-webkit-scrollbar-thumb,
+.verse-grid::-webkit-scrollbar-thumb {
     background: rgba(0, 212, 255, 0.5);
     border-radius: 3px;
 }

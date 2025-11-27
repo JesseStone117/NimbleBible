@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { getBooksForTestament, getChaptersForBook } from '../utils/bibleData';
+import { getBooksForTestament, getChaptersForBook, getVersesForChapter } from '../utils/bibleData';
 import { hapticFeedback } from '../utils/haptics';
 import './TestamentSelector.css';
 
@@ -17,8 +17,15 @@ function TestamentSelector({ onPassageSelect }) {
     const [showBooks, setShowBooks] = useState(false);
     const [showChapters, setShowChapters] = useState(false);
     const [selectedBook, setSelectedBook] = useState(null);
+    const [selectedChapter, setSelectedChapter] = useState(null);
+    const [showVerses, setShowVerses] = useState(false);
+    const [hoveredVerse, setHoveredVerse] = useState(null);
+    const [verseHoverStart, setVerseHoverStart] = useState(null);
+    const [longPressProgress, setLongPressProgress] = useState(0); // 0-100 for progress circle
+    const [pressedTestament, setPressedTestament] = useState(null); // Track which button is pressed
 
     const longPressTimer = useRef(null);
+    const progressInterval = useRef(null);
     const hoverTimer = useRef(null);
 
     // Handle touch start on testament button
@@ -29,6 +36,20 @@ function TestamentSelector({ onPassageSelect }) {
         const touch = e.touches[0];
         setTouchPosition({ x: touch.clientX, y: touch.clientY });
         setActiveTestament(testament);
+        setPressedTestament(testament);
+        setLongPressProgress(0);
+
+        // Start progress animation
+        const startTime = Date.now();
+        progressInterval.current = setInterval(() => {
+            const elapsed = Date.now() - startTime;
+            const progress = Math.min((elapsed / LONG_PRESS_DURATION) * 100, 100);
+            setLongPressProgress(progress);
+
+            if (progress >= 100) {
+                clearInterval(progressInterval.current);
+            }
+        }, 16); // ~60fps
 
         // Start long-press timer
         longPressTimer.current = setTimeout(() => {
@@ -52,6 +73,7 @@ function TestamentSelector({ onPassageSelect }) {
         if (element) {
             const bookItem = element.closest('[data-book]');
             const chapterItem = element.closest('[data-chapter]');
+            const verseItem = element.closest('[data-verse-num]');
 
             if (bookItem && !selectedBook) {
                 const book = bookItem.dataset.book;
@@ -66,15 +88,28 @@ function TestamentSelector({ onPassageSelect }) {
                     setBookHoverStart(null);
                     hapticFeedback('medium');
                 }
-            } else if (chapterItem && selectedBook) {
+            } else if (chapterItem && selectedBook && !selectedChapter) {
                 const chapter = parseInt(chapterItem.dataset.chapter);
                 if (chapter !== hoveredChapter) {
                     setHoveredChapter(chapter);
                     setChapterHoverStart(Date.now());
                     hapticFeedback('light');
                 } else if (chapterHoverStart && Date.now() - chapterHoverStart >= HOVER_ACTIVATION_DURATION) {
-                    // Finalize selection
-                    setHoveredChapter(chapter);
+                    // Activate chapter after 1 second hover
+                    setSelectedChapter(chapter);
+                    setShowVerses(true);
+                    setChapterHoverStart(null);
+                    hapticFeedback('medium');
+                }
+            } else if (verseItem && selectedChapter) {
+                const verse = parseInt(verseItem.dataset.verseNum);
+                if (verse !== hoveredVerse) {
+                    setHoveredVerse(verse);
+                    setVerseHoverStart(Date.now());
+                    hapticFeedback('light');
+                } else if (verseHoverStart && Date.now() - verseHoverStart >= HOVER_ACTIVATION_DURATION) {
+                    // Mark verse for selection
+                    setHoveredVerse(verse);
                     hapticFeedback('heavy');
                 }
             }
@@ -86,13 +121,20 @@ function TestamentSelector({ onPassageSelect }) {
         e.preventDefault();
 
         clearTimeout(longPressTimer.current);
+        clearInterval(progressInterval.current);
+        setPressedTestament(null);
+        setLongPressProgress(0);
 
         if (!isLongPress) {
             // Simple tap - just show books
             setShowBooks(true);
             hapticFeedback('medium');
-        } else if (selectedBook && hoveredChapter !== null) {
-            // Complete selection from gesture
+        } else if (selectedBook && selectedChapter && hoveredVerse !== null) {
+            // Complete selection from gesture with verse
+            onPassageSelect(selectedBook, selectedChapter, hoveredVerse);
+            hapticFeedback('heavy');
+        } else if (selectedBook && hoveredChapter !== null && !selectedChapter) {
+            // Complete selection without verse (just go to chapter)
             onPassageSelect(selectedBook, hoveredChapter);
             hapticFeedback('heavy');
         }
@@ -119,7 +161,14 @@ function TestamentSelector({ onPassageSelect }) {
 
     // Chapter selection (tap mode)
     const handleChapterClick = (chapter) => {
-        onPassageSelect(selectedBook, chapter);
+        setSelectedChapter(chapter);
+        setShowVerses(true);
+        hapticFeedback('medium');
+    };
+
+    // Verse selection (tap mode)
+    const handleVerseClick = (verse) => {
+        onPassageSelect(selectedBook, selectedChapter, verse);
         hapticFeedback('heavy');
     };
 
@@ -128,16 +177,21 @@ function TestamentSelector({ onPassageSelect }) {
         setActiveTestament(null);
         setShowBooks(false);
         setShowChapters(false);
+        setShowVerses(false);
         setSelectedBook(null);
+        setSelectedChapter(null);
         setHoveredBook(null);
         setHoveredChapter(null);
+        setHoveredVerse(null);
         setBookHoverStart(null);
         setChapterHoverStart(null);
+        setVerseHoverStart(null);
         setTouchPosition(null);
     };
 
     const books = activeTestament ? getBooksForTestament(activeTestament) : [];
     const chapters = selectedBook ? getChaptersForBook(selectedBook) : [];
+    const verses = selectedBook && selectedChapter ? getVersesForChapter(selectedBook, selectedChapter) : [];
 
     return (
         <div className="testament-selector">
@@ -156,6 +210,23 @@ function TestamentSelector({ onPassageSelect }) {
                 >
                     <span className="testament-label">Old</span>
                     <span className="testament-name">Testament</span>
+                    {pressedTestament === 'old' && longPressProgress > 0 && (
+                        <svg className="testament-progress-ring" width="80" height="80">
+                            <circle
+                                className="testament-progress-circle"
+                                stroke="#fff"
+                                strokeWidth="4"
+                                fill="transparent"
+                                r="38"
+                                cx="40"
+                                cy="40"
+                                style={{
+                                    strokeDasharray: `${2 * Math.PI * 38}`,
+                                    strokeDashoffset: `${2 * Math.PI * 38 * (1 - longPressProgress / 100)}`
+                                }}
+                            />
+                        </svg>
+                    )}
                 </button>
 
                 <button
@@ -167,6 +238,23 @@ function TestamentSelector({ onPassageSelect }) {
                 >
                     <span className="testament-label">New</span>
                     <span className="testament-name">Testament</span>
+                    {pressedTestament === 'new' && longPressProgress > 0 && (
+                        <svg className="testament-progress-ring" width="80" height="80">
+                            <circle
+                                className="testament-progress-circle"
+                                stroke="#fff"
+                                strokeWidth="4"
+                                fill="transparent"
+                                r="38"
+                                cx="40"
+                                cy="40"
+                                style={{
+                                    strokeDasharray: `${2 * Math.PI * 38}`,
+                                    strokeDashoffset: `${2 * Math.PI * 38 * (1 - longPressProgress / 100)}`
+                                }}
+                            />
+                        </svg>
+                    )}
                 </button>
             </div>
 
@@ -219,11 +307,36 @@ function TestamentSelector({ onPassageSelect }) {
                             <div
                                 key={chapter}
                                 data-chapter={chapter}
-                                className={`chapter-item ${hoveredChapter === chapter ? 'hovered' : ''}`}
+                                className={`chapter-item ${hoveredChapter === chapter ? 'hovered' : ''} ${selectedChapter === chapter ? 'selected' : ''}`}
                                 onClick={() => handleChapterClick(chapter)}
                             >
                                 {chapter}
                                 {hoveredChapter === chapter && chapterHoverStart && (
+                                    <div className="hover-progress-small"></div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Verse List Overlay */}
+            {showVerses && selectedBook && selectedChapter && (
+                <div className="overlay verses-overlay">
+                    <div className="overlay-header">
+                        <button className="back-button" onClick={() => { setShowVerses(false); setSelectedChapter(null); }}>←</button>
+                        <h2>{selectedBook} {selectedChapter}</h2>
+                    </div>
+                    <div className="verse-grid">
+                        {verses.map(verseNum => (
+                            <div
+                                key={verseNum}
+                                data-verse-num={verseNum}
+                                className={`verse-item ${hoveredVerse === verseNum ? 'hovered' : ''}`}
+                                onClick={() => handleVerseClick(verseNum)}
+                            >
+                                {verseNum}
+                                {hoveredVerse === verseNum && verseHoverStart && (
                                     <div className="hover-progress-small"></div>
                                 )}
                             </div>

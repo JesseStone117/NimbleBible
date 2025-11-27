@@ -7,7 +7,7 @@ import './App.css';
 function App() {
     const [bibleLoaded, setBibleLoaded] = useState(false);
     const [currentView, setCurrentView] = useState('testament'); // 'testament' | 'reader'
-    const [selectedPassage, setSelectedPassage] = useState(null); // {book, chapter}
+    const [selectedPassage, setSelectedPassage] = useState(null); // {book, chapter, verse}
 
     useEffect(() => {
         loadBibleData()
@@ -15,8 +15,8 @@ function App() {
             .catch(err => console.error('Failed to load Bible:', err));
     }, []);
 
-    const handlePassageSelect = (book, chapter) => {
-        setSelectedPassage({ book, chapter });
+    const handlePassageSelect = (book, chapter, verse = null) => {
+        setSelectedPassage({ book, chapter, verse });
         setCurrentView('reader');
     };
 
@@ -43,6 +43,7 @@ function App() {
                 <VerseReader
                     book={selectedPassage.book}
                     chapter={selectedPassage.chapter}
+                    verse={selectedPassage.verse}
                     onBack={handleBackToSelection}
                 />
             )}

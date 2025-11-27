@@ -88,6 +88,25 @@
     letter-spacing: 0.01em;
 }
 
+.verse-highlight {
+    background: rgba(0, 212, 255, 0.2);
+    border-left: 3px solid #00d4ff;
+    padding-left: 1rem;
+    margin-left: -1rem;
+    border-radius: 4px;
+    animation: highlightFade 2s ease-out;
+}
+
+@keyframes highlightFade {
+    0% {
+        background: rgba(0, 212, 255, 0.3);
+    }
+
+    100% {
+        background: rgba(0, 212, 255, 0);
+    }
+}
+
 /* Custom scrollbar */
 .verse-content::-webkit-scrollbar {
     width: 6px;
