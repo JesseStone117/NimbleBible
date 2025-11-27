@@ -1,0 +1,104 @@
+.verse-reader {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+}
+
+.reader-header {
+    display: flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    gap: 1rem;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+}
+
+.passage-title {
+    flex: 1;
+    text-align: center;
+}
+
+.passage-title h2 {
+    font-size: 1.3rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #00d4ff 0%, #00ff88 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+
+.font-controls {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.font-button {
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: white;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.font-button:active {
+    background: rgba(255, 255, 255, 0.2);
+    transform: scale(0.95);
+}
+
+.verse-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 2rem 1.5rem;
+    line-height: 1.8;
+    -webkit-overflow-scrolling: touch;
+}
+
+.verse {
+    margin-bottom: 1.2rem;
+    display: flex;
+    gap: 0.8rem;
+}
+
+.verse-number {
+    color: #00d4ff;
+    font-weight: 700;
+    font-size: 0.85em;
+    min-width: 2em;
+    flex-shrink: 0;
+    display: inline-block;
+    position: relative;
+    top: 0.1em;
+}
+
+.verse-text {
+    color: #e0e0e0;
+    flex: 1;
+    font-family: Georgia, 'Times New Roman', serif;
+    letter-spacing: 0.01em;
+}
+
+/* Custom scrollbar */
+.verse-content::-webkit-scrollbar {
+    width: 6px;
+}
+
+.verse-content::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 3px;
+}
+
+.verse-content::-webkit-scrollbar-thumb {
+    background: rgba(0, 212, 255, 0.5);
+    border-radius: 3px;
+}
