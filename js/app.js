@@ -9,7 +9,8 @@ const App = {
             timer: null,
             level: null, // 'book', 'chapter'
             currentItem: null,
-            listItems: []
+            listItems: [],
+            progressCleanup: null
         }
     },
 
@@ -67,29 +68,98 @@ const App = {
 
     bindNimbleTrigger(element, testament) {
         let pressTimer;
+        let progressCleanup;
 
         const start = (e) => {
-            // e.preventDefault(); // Don't prevent default immediately, allow click
+            // Start progress circle
+            progressCleanup = this.showProgress(element, 500);
+
             pressTimer = setTimeout(() => {
                 this.startNimbleMode(testament);
+                // Important: Don't cancel progress here, let it finish or be removed by the mode switch?
+                // Actually, startNimbleMode will show the overlay.
+                // The user is still holding.
             }, 500); // 500ms long press
         };
 
         const cancel = () => {
             clearTimeout(pressTimer);
+            if (progressCleanup) progressCleanup();
         };
 
+        // Touch Events
         element.addEventListener('touchstart', start, { passive: true });
         element.addEventListener('touchend', cancel);
-        element.addEventListener('touchmove', cancel);
+
+        // Continuous Gesture: Handle move on the BUTTON itself
+        // Because if we start here, events keep bubbling to here even if we move off
+        element.addEventListener('touchmove', (e) => {
+            if (this.state.nimble.active) {
+                // Delegate to nimble handler
+                this.handleNimbleMove(e);
+            } else {
+                // If we move too much before activation, cancel?
+                // For now, let's be lenient.
+                // cancel(); // Optional: cancel on drag
+            }
+        }, { passive: false });
+
+        // Mouse support for testing
         element.addEventListener('mousedown', (e) => {
-            // Mouse support for testing
+            progressCleanup = this.showProgress(element, 500);
             pressTimer = setTimeout(() => {
                 this.startNimbleMode(testament);
             }, 500);
         });
         element.addEventListener('mouseup', cancel);
         element.addEventListener('mouseleave', cancel);
+    },
+
+    // --- Visual Feedback (Progress Circle) ---
+
+    showProgress(target, duration) {
+        // Create SVG
+        const size = target.classList.contains('nimble-item') ? 30 : 60;
+        const stroke = 4;
+        const radius = (size - stroke) / 2;
+        const circumference = radius * 2 * Math.PI;
+
+        const container = document.createElement('div');
+        container.className = 'progress-container';
+        container.innerHTML = `
+            <svg class="progress-ring" width="${size}" height="${size}">
+                <circle
+                    class="progress-ring__circle"
+                    stroke="white"
+                    stroke-width="${stroke}"
+                    fill="transparent"
+                    r="${radius}"
+                    cx="${size / 2}"
+                    cy="${size / 2}"
+                    style="stroke-dasharray: ${circumference} ${circumference}; stroke-dashoffset: ${circumference};"
+                />
+            </svg>
+        `;
+
+        // Position relative to target if it's a nimble item, or center if button
+        // CSS handles centering for .progress-container
+
+        target.appendChild(container);
+
+        // Force reflow
+        container.getBoundingClientRect();
+
+        // Animate
+        const circle = container.querySelector('circle');
+        circle.style.transition = `stroke-dashoffset ${duration}ms linear`;
+        circle.style.strokeDashoffset = '0';
+
+        // Cleanup function
+        return () => {
+            if (container.parentNode) {
+                container.parentNode.removeChild(container);
+            }
+        };
     },
 
     // --- Navigation & Rendering ---
@@ -170,6 +240,8 @@ const App = {
     // --- Nimble Navigation Logic ---
 
     startNimbleMode(testament) {
+        if (this.state.nimble.active) return;
+
         this.state.nimble.active = true;
         this.state.nimble.level = 'book';
         this.state.testament = testament;
@@ -210,10 +282,22 @@ const App = {
         const touch = e.touches[0];
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
 
-        if (!target || !target.classList.contains('nimble-item')) return;
+        // If we are over a nimble item
+        let itemEl = target;
+        if (target && !target.classList.contains('nimble-item')) {
+            itemEl = target.closest('.nimble-item');
+        }
+
+        if (!itemEl) {
+            // If we moved off an item, maybe cancel the current hover?
+            if (this.state.nimble.currentItem) {
+                this.cancelHover();
+            }
+            return;
+        }
 
         // Find the data item
-        const item = this.state.nimble.listItems.find(i => i.el === target);
+        const item = this.state.nimble.listItems.find(i => i.el === itemEl);
         if (!item) return;
 
         if (this.state.nimble.currentItem !== item) {
@@ -224,6 +308,9 @@ const App = {
     },
 
     highlightNimbleItem(item) {
+        // Cancel previous
+        this.cancelHover();
+
         // Remove old active
         this.state.nimble.listItems.forEach(i => i.el.classList.remove('active'));
 
@@ -234,20 +321,39 @@ const App = {
         // Update preview
         this.els.nimblePreview.textContent = item.data.name || item.data.number || item.data;
 
-        // Scroll into view if needed (optional, might be jarring during drag)
+        // Scroll into view if needed
         item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     },
 
     startHoverTimer(item) {
-        if (this.state.nimble.timer) clearTimeout(this.state.nimble.timer);
+        // Start progress
+        this.state.nimble.progressCleanup = this.showProgress(item.el, 1000);
 
         this.state.nimble.timer = setTimeout(() => {
             this.handleHoverComplete(item);
         }, 1000); // 1 second hover
     },
 
+    cancelHover() {
+        if (this.state.nimble.timer) {
+            clearTimeout(this.state.nimble.timer);
+            this.state.nimble.timer = null;
+        }
+        if (this.state.nimble.progressCleanup) {
+            this.state.nimble.progressCleanup();
+            this.state.nimble.progressCleanup = null;
+        }
+        this.state.nimble.currentItem = null;
+    },
+
     handleHoverComplete(item) {
         if (navigator.vibrate) navigator.vibrate(20);
+
+        // Cleanup progress
+        if (this.state.nimble.progressCleanup) {
+            this.state.nimble.progressCleanup();
+            this.state.nimble.progressCleanup = null;
+        }
 
         if (this.state.nimble.level === 'book') {
             // Selected a Book -> Show Chapters
@@ -258,6 +364,9 @@ const App = {
             this.renderNimbleList(chapters.map(c => ({ label: `Ch ${c.number}`, data: c })));
 
             this.els.nimblePreview.textContent = `${this.state.book.name}`;
+
+            // Reset current item so we can select again
+            this.state.nimble.currentItem = null;
 
         } else if (this.state.nimble.level === 'chapter') {
             // Selected a Chapter -> Go to Verse View
@@ -271,24 +380,20 @@ const App = {
     handleNimbleEnd(e) {
         if (!this.state.nimble.active) return;
 
-        // If we lift finger without completing the hover, what happens?
-        // Maybe we just select whatever is highlighted?
-        // Or we cancel?
-        // User said: "without lifting my finger... hover... show me verses".
-        // If they lift, maybe we should just select the current item if it's a valid selection?
-        // Let's assume lift = select current.
-
-        if (this.state.nimble.currentItem) {
-            this.handleHoverComplete(this.state.nimble.currentItem);
-        } else {
-            this.endNimbleMode();
-        }
+        // If we lift finger, we just close the mode?
+        // Or do we select if we were hovering?
+        // User said "without lifting my finger... show me verses".
+        // If they lift, let's just close for now, or maybe select if they were close?
+        // Let's stick to: Lift = Cancel/Close, unless we want to support "Tap to select" in nimble mode too?
+        // But nimble mode is overlay.
+        // Let's just close.
+        this.endNimbleMode();
     },
 
     endNimbleMode() {
         this.state.nimble.active = false;
         this.els.nimbleOverlay.classList.add('hidden');
-        if (this.state.nimble.timer) clearTimeout(this.state.nimble.timer);
+        this.cancelHover();
     }
 };
 

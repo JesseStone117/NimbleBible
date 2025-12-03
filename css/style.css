@@ -79,6 +79,8 @@ body {
     transition: transform 0.1s, background-color 0.2s;
     touch-action: none;
     /* Important for custom gestures */
+    position: relative;
+    /* For progress circle positioning */
 }
 
 .big-btn:active {
@@ -198,6 +200,7 @@ h1 {
     color: #888;
     transition: color 0.2s, transform 0.2s;
     font-size: 1rem;
+    position: relative;
 }
 
 .nimble-item.active {
@@ -215,4 +218,30 @@ h1 {
     justify-content: center;
     font-size: 1.5rem;
     text-align: center;
+}
+
+/* Progress Circle */
+.progress-container {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 60px;
+    height: 60px;
+    pointer-events: none;
+    z-index: 10;
+}
+
+.progress-ring__circle {
+    transition: stroke-dashoffset 0.1s linear;
+    transform: rotate(-90deg);
+    transform-origin: 50% 50%;
+}
+
+/* Specific positioning for list items */
+.nimble-item .progress-container {
+    left: 85%;
+    /* Position to the right of text */
+    width: 30px;
+    height: 30px;
 }
