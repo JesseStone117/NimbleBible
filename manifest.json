@@ -1,16 +1,50 @@
 {
     "name": "NimbleBible",
     "short_name": "NimbleBible",
-    "start_url": "/",
-    "scope": "/",
+    "start_url": "./",
+    "scope": "./",
     "display": "standalone",
+    "orientation": "portrait-primary",
     "background_color": "#121212",
     "theme_color": "#121212",
     "description": "Fast, frictionless Bible navigation",
+    "categories": ["books", "reference", "education"],
+    "lang": "en",
+    "dir": "ltr",
     "icons": [
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'><rect width='48' height='48' fill='%231e1e1e'/><text x='24' y='32' font-size='28' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
+            "sizes": "48x48",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 72 72'><rect width='72' height='72' fill='%231e1e1e'/><text x='36' y='48' font-size='42' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
+            "sizes": "72x72",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' fill='%231e1e1e'/><text x='48' y='64' font-size='56' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
+            "sizes": "96x96",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 144 144'><rect width='144' height='144' fill='%231e1e1e'/><text x='72' y='96' font-size='84' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
+            "sizes": "144x144",
+            "type": "image/svg+xml",
+            "purpose": "any"
+        },
         {
             "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect width='192' height='192' fill='%231e1e1e'/><text x='96' y='120' font-size='100' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
             "sizes": "192x192",
+            "type": "image/svg+xml",
+            "purpose": "any maskable"
+        },
+        {
+            "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 384 384'><rect width='384' height='384' fill='%231e1e1e'/><text x='192' y='240' font-size='200' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>",
+            "sizes": "384x384",
             "type": "image/svg+xml",
             "purpose": "any maskable"
         },
@@ -20,5 +54,32 @@
             "type": "image/svg+xml",
             "purpose": "any maskable"
         }
-    ]
+    ],
+    "shortcuts": [
+        {
+            "name": "Old Testament",
+            "short_name": "OT",
+            "description": "Open Old Testament",
+            "url": "./?testament=ot",
+            "icons": [
+                {
+                    "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' fill='%231e1e1e'/><text x='48' y='64' font-size='56' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>OT</text></svg>",
+                    "sizes": "96x96"
+                }
+            ]
+        },
+        {
+            "name": "New Testament",
+            "short_name": "NT",
+            "description": "Open New Testament",
+            "url": "./?testament=nt",
+            "icons": [
+                {
+                    "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><rect width='96' height='96' fill='%231e1e1e'/><text x='48' y='64' font-size='56' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NT</text></svg>",
+                    "sizes": "96x96"
+                }
+            ]
+        }
+    ],
+    "prefer_related_applications": false
 }

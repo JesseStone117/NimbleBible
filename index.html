@@ -8,9 +8,22 @@
     <title>NimbleBible</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
+    
+    <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#121212">
+    <meta name="description" content="Fast, frictionless Bible navigation">
+    <meta name="mobile-web-app-capable" content="yes">
+    
+    <!-- Apple iOS Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="NimbleBible">
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' fill='%231e1e1e'/><text x='90' y='115' font-size='94' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>">
+    
+    <!-- Microsoft Tiles -->
+    <meta name="msapplication-TileColor" content="#121212">
+    <meta name="msapplication-TileImage" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 144 144'><rect width='144' height='144' fill='%231e1e1e'/><text x='72' y='96' font-size='84' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>">
+    <meta name="msapplication-config" content="none">
 </head>
 
 <body>
@@ -56,9 +69,34 @@
     <script src="js/data.js"></script>
     <script src="js/app.js"></script>
     <script>
+        // Register Service Worker
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('sw.js');
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((registration) => {
+                        console.log('SW registered:', registration);
+                        
+                        // Check for updates periodically
+                        setInterval(() => {
+                            registration.update();
+                        }, 60000); // Check every minute
+                    })
+                    .catch((error) => {
+                        console.log('SW registration failed:', error);
+                    });
+            });
         }
+        
+        // Handle PWA install prompt
+        let deferredPrompt;
+        window.addEventListener('beforeinstallprompt', (e) => {
+            // Prevent the mini-infobar from appearing
+            e.preventDefault();
+            // Stash the event so it can be triggered later
+            deferredPrompt = e;
+            // Optionally, show your own install UI
+            console.log('PWA install prompt available');
+        });
     </script>
 </body>
 
