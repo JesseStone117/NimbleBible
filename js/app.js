@@ -58,6 +58,8 @@ const App = {
             chapterList: document.getElementById('chapter-list'),
             verseList: document.getElementById('verse-list'),
             verseContent: document.getElementById('verse-content'),
+            verseToolbar: document.getElementById('verse-toolbar'),
+            copyVerseBtn: document.getElementById('copy-verse-btn'),
 
             testamentTitle: document.getElementById('testament-title'),
             bookTitle: document.getElementById('book-title'),
@@ -94,6 +96,13 @@ const App = {
 
         // Prevent text selection globally
         this.preventTextSelection();
+
+        // Copy button handler
+        if (this.els.copyVerseBtn) {
+            this.els.copyVerseBtn.addEventListener('click', () => {
+                this.copySelectedVerses();
+            });
+        }
     },
 
     preventTextSelection() {
@@ -196,6 +205,11 @@ const App = {
         this.els[viewId].classList.remove('hidden');
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
+
+        // Hide toolbar when leaving verse view
+        if (viewId !== 'verseView') {
+            this.hideToolbar();
+        }
 
         // Push state for browser back button (except home and when restoring from history)
         if (!skipHistory && viewId !== 'homeView') {
@@ -361,6 +375,7 @@ const App = {
             rangeStart: null,
             rangeEnd: null
         };
+        this.hideToolbar();
 
         this.els.verseContent.innerHTML = '';
         chapter.verses.forEach(verse => {
@@ -496,39 +511,82 @@ const App = {
     bindVerseSelection(verseEl, verse) {
         let pressTimer;
         let isLongPress = false;
+        let startX = 0;
+        let startY = 0;
+        let hasMoved = false;
 
         const handleStart = (e) => {
-            // Prevent text selection
-            e.preventDefault();
-            e.stopPropagation();
+            // Don't prevent default - allow scrolling
+            hasMoved = false;
             isLongPress = false;
+            
+            // Get starting position
+            if (e.touches && e.touches.length > 0) {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            } else if (e.clientX !== undefined) {
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+
             pressTimer = setTimeout(() => {
                 isLongPress = true;
-                this.handleVerseLongPress(verseEl, verse);
             }, 500); // 500ms for long press
         };
 
+        const handleMove = (e) => {
+            // Check if user has moved significantly (scrolling)
+            let currentX, currentY;
+            if (e.touches && e.touches.length > 0) {
+                currentX = e.touches[0].clientX;
+                currentY = e.touches[0].clientY;
+            } else if (e.clientX !== undefined) {
+                currentX = e.clientX;
+                currentY = e.clientY;
+            } else {
+                return;
+            }
+
+            const deltaX = Math.abs(currentX - startX);
+            const deltaY = Math.abs(currentY - startY);
+            
+            // If moved more than 10px, consider it scrolling
+            if (deltaX > 10 || deltaY > 10) {
+                hasMoved = true;
+                clearTimeout(pressTimer);
+            }
+        };
+
         const handleEnd = (e) => {
-            e.preventDefault();
-            e.stopPropagation();
             clearTimeout(pressTimer);
-            if (!isLongPress) {
-                this.handleVerseSingleTap(verseEl, verse);
+            
+            // Only handle selection if there was no movement (not scrolling)
+            if (!hasMoved) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                if (isLongPress) {
+                    this.handleVerseLongPress(verseEl, verse);
+                } else {
+                    this.handleVerseSingleTap(verseEl, verse);
+                }
             }
         };
 
         const handleCancel = () => {
             clearTimeout(pressTimer);
+            hasMoved = false;
         };
 
         // Touch events
-        verseEl.addEventListener('touchstart', handleStart, { passive: false });
+        verseEl.addEventListener('touchstart', handleStart, { passive: true });
+        verseEl.addEventListener('touchmove', handleMove, { passive: true });
         verseEl.addEventListener('touchend', handleEnd, { passive: false });
-        verseEl.addEventListener('touchcancel', handleCancel, { passive: false });
-        verseEl.addEventListener('touchmove', handleCancel, { passive: false });
+        verseEl.addEventListener('touchcancel', handleCancel, { passive: true });
 
         // Mouse events (for desktop/testing)
         verseEl.addEventListener('mousedown', handleStart);
+        verseEl.addEventListener('mousemove', handleMove);
         verseEl.addEventListener('mouseup', handleEnd);
         verseEl.addEventListener('mouseleave', handleCancel);
 
@@ -555,6 +613,7 @@ const App = {
         if (this.state.verseSelection.singleSelected === verseNum) {
             this.state.verseSelection.singleSelected = null;
             verseEl.classList.remove('selected');
+            this.hideToolbar();
         } else {
             // Deselect previous single selection
             if (this.state.verseSelection.singleSelected !== null) {
@@ -565,9 +624,7 @@ const App = {
             // Select this verse
             this.state.verseSelection.singleSelected = verseNum;
             verseEl.classList.add('selected');
-
-            // Copy verse text to clipboard
-            this.copySelectedVerses();
+            this.showToolbar();
         }
     },
 
@@ -591,9 +648,7 @@ const App = {
 
         // Highlight all verses in range
         this.updateVerseRangeSelection();
-
-        // Copy selected verses to clipboard
-        this.copySelectedVerses();
+        this.showToolbar();
     },
 
     updateVerseRangeSelection() {
@@ -624,6 +679,19 @@ const App = {
             rangeStart: null,
             rangeEnd: null
         };
+        this.hideToolbar();
+    },
+
+    showToolbar() {
+        if (this.els.verseToolbar) {
+            this.els.verseToolbar.classList.add('visible');
+        }
+    },
+
+    hideToolbar() {
+        if (this.els.verseToolbar) {
+            this.els.verseToolbar.classList.remove('visible');
+        }
     },
 
     copySelectedVerses() {

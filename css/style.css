@@ -196,6 +196,54 @@ h1 {
     vertical-align: super;
 }
 
+/* Verse Selection Toolbar */
+.verse-toolbar {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background-color: var(--secondary-bg);
+    border-radius: 25px;
+    padding: 10px 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.2s, transform 0.2s;
+    transform: translateX(-50%) translateY(20px);
+}
+
+.verse-toolbar.visible {
+    opacity: 1;
+    pointer-events: all;
+    transform: translateX(-50%) translateY(0);
+}
+
+.verse-toolbar-btn {
+    background-color: var(--accent-color);
+    color: var(--text-color);
+    border: none;
+    border-radius: 20px;
+    padding: 8px 16px;
+    font-size: 0.9rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.2s, transform 0.1s;
+    white-space: nowrap;
+}
+
+.verse-toolbar-btn:active {
+    transform: scale(0.95);
+    background-color: #2563eb;
+}
+
+.verse-toolbar-btn:hover {
+    background-color: #2563eb;
+}
+
 /* Progress Border */
 .progress-container {
     position: absolute;
