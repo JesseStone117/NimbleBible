@@ -182,10 +182,17 @@ h1 {
 }
 
 #nimble-list {
-    width: 120px;
+    width: 300px;
+    /* Wider for 3 columns */
     overflow-y: auto;
     border-right: 1px solid #333;
     padding-right: 10px;
+    /* Grid Layout */
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 5px;
+    align-content: start;
+
     /* Hide scrollbar */
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -201,12 +208,18 @@ h1 {
     transition: color 0.2s, transform 0.2s;
     font-size: 1rem;
     position: relative;
+    text-align: center;
+    background-color: rgba(255, 255, 255, 0.05);
+    /* Slight background for grid items */
+    border-radius: 5px;
 }
 
 .nimble-item.active {
     color: #fff;
     font-weight: bold;
-    transform: scale(1.1) translateX(5px);
+    transform: scale(1.05);
+    background-color: rgba(255, 255, 255, 0.1);
+    z-index: 2;
 }
 
 #nimble-preview {
@@ -240,8 +253,10 @@ h1 {
 
 /* Specific positioning for list items */
 .nimble-item .progress-container {
-    left: 85%;
-    /* Position to the right of text */
-    width: 30px;
-    height: 30px;
+    left: 50%;
+    /* Center in grid item */
+    top: 50%;
+    width: 40px;
+    /* Slightly larger for grid */
+    height: 40px;
 }

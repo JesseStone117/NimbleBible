@@ -7,7 +7,7 @@ const App = {
         nimble: {
             active: false,
             timer: null,
-            level: null, // 'book', 'chapter'
+            level: null, // 'book', 'chapter', 'verse'
             currentItem: null,
             listItems: [],
             progressCleanup: null
@@ -32,16 +32,23 @@ const App = {
             homeView: document.getElementById('home-view'),
             bookView: document.getElementById('book-view'),
             chapterView: document.getElementById('chapter-view'),
+            verseListView: document.getElementById('verse-list-view'),
             verseView: document.getElementById('verse-view'),
+
             bookList: document.getElementById('book-list'),
             chapterList: document.getElementById('chapter-list'),
+            verseList: document.getElementById('verse-list'),
             verseContent: document.getElementById('verse-content'),
+
             testamentTitle: document.getElementById('testament-title'),
             bookTitle: document.getElementById('book-title'),
+            verseListTitle: document.getElementById('verse-list-title'),
             chapterTitle: document.getElementById('chapter-title'),
+
             nimbleOverlay: document.getElementById('nimble-overlay'),
             nimbleList: document.getElementById('nimble-list'),
             nimblePreview: document.getElementById('nimble-preview'),
+
             btnOT: document.getElementById('btn-ot'),
             btnNT: document.getElementById('btn-nt')
         };
@@ -71,15 +78,10 @@ const App = {
         let progressCleanup;
 
         const start = (e) => {
-            // Start progress circle
             progressCleanup = this.showProgress(element, 500);
-
             pressTimer = setTimeout(() => {
                 this.startNimbleMode(testament);
-                // Important: Don't cancel progress here, let it finish or be removed by the mode switch?
-                // Actually, startNimbleMode will show the overlay.
-                // The user is still holding.
-            }, 500); // 500ms long press
+            }, 500);
         };
 
         const cancel = () => {
@@ -87,24 +89,15 @@ const App = {
             if (progressCleanup) progressCleanup();
         };
 
-        // Touch Events
         element.addEventListener('touchstart', start, { passive: true });
         element.addEventListener('touchend', cancel);
 
-        // Continuous Gesture: Handle move on the BUTTON itself
-        // Because if we start here, events keep bubbling to here even if we move off
         element.addEventListener('touchmove', (e) => {
             if (this.state.nimble.active) {
-                // Delegate to nimble handler
                 this.handleNimbleMove(e);
-            } else {
-                // If we move too much before activation, cancel?
-                // For now, let's be lenient.
-                // cancel(); // Optional: cancel on drag
             }
         }, { passive: false });
 
-        // Mouse support for testing
         element.addEventListener('mousedown', (e) => {
             progressCleanup = this.showProgress(element, 500);
             pressTimer = setTimeout(() => {
@@ -115,11 +108,9 @@ const App = {
         element.addEventListener('mouseleave', cancel);
     },
 
-    // --- Visual Feedback (Progress Circle) ---
-
     showProgress(target, duration) {
-        // Create SVG
-        const size = target.classList.contains('nimble-item') ? 30 : 60;
+        const isNimbleItem = target.classList.contains('nimble-item');
+        const size = isNimbleItem ? 40 : 60; // Match CSS
         const stroke = 4;
         const radius = (size - stroke) / 2;
         const circumference = radius * 2 * Math.PI;
@@ -141,20 +132,13 @@ const App = {
             </svg>
         `;
 
-        // Position relative to target if it's a nimble item, or center if button
-        // CSS handles centering for .progress-container
-
         target.appendChild(container);
+        container.getBoundingClientRect(); // Force reflow
 
-        // Force reflow
-        container.getBoundingClientRect();
-
-        // Animate
         const circle = container.querySelector('circle');
         circle.style.transition = `stroke-dashoffset ${duration}ms linear`;
         circle.style.strokeDashoffset = '0';
 
-        // Cleanup function
         return () => {
             if (container.parentNode) {
                 container.parentNode.removeChild(container);
@@ -175,10 +159,26 @@ const App = {
     },
 
     goBack() {
+        // Hierarchy: verseView -> verseListView -> chapterView -> bookView -> homeView
         if (this.state.currentView === 'verse-view') {
-            this.switchView('chapterView');
+            // Go back to Verse List (re-render it)
+            if (this.state.chapter) {
+                this.openVerseList(this.state.chapter);
+            } else {
+                this.switchView('homeView'); // Fallback
+            }
+        } else if (this.state.currentView === 'verse-list-view') {
+            if (this.state.book) {
+                this.openChapterList(this.state.book);
+            } else {
+                this.switchView('homeView');
+            }
         } else if (this.state.currentView === 'chapter-view') {
-            this.switchView('bookView');
+            if (this.state.testament) {
+                this.openBookList(this.state.testament);
+            } else {
+                this.switchView('homeView');
+            }
         } else if (this.state.currentView === 'book-view') {
             this.switchView('homeView');
         }
@@ -215,14 +215,30 @@ const App = {
             const div = document.createElement('div');
             div.className = 'grid-item';
             div.textContent = chapter.number;
-            div.onclick = () => this.openVerseView(chapter);
+            div.onclick = () => this.openVerseList(chapter);
             this.els.chapterList.appendChild(div);
         });
 
         this.switchView('chapterView');
     },
 
-    openVerseView(chapter) {
+    openVerseList(chapter) {
+        this.state.chapter = chapter;
+        this.els.verseListTitle.textContent = `${this.state.book.name} ${chapter.number}`;
+
+        this.els.verseList.innerHTML = '';
+        chapter.verses.forEach(verse => {
+            const div = document.createElement('div');
+            div.className = 'grid-item';
+            div.textContent = verse.number;
+            div.onclick = () => this.openVerseView(chapter, verse.number);
+            this.els.verseList.appendChild(div);
+        });
+
+        this.switchView('verseListView');
+    },
+
+    openVerseView(chapter, targetVerseNum = 1) {
         this.state.chapter = chapter;
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
@@ -230,11 +246,24 @@ const App = {
         chapter.verses.forEach(verse => {
             const p = document.createElement('div');
             p.className = 'verse';
+            p.id = `verse-${verse.number}`; // Add ID for scrolling
             p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
+
+            // Highlight target verse?
+            if (verse.number === targetVerseNum) {
+                p.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+            }
+
             this.els.verseContent.appendChild(p);
         });
 
         this.switchView('verseView');
+
+        // Scroll to verse
+        setTimeout(() => {
+            const el = document.getElementById(`verse-${targetVerseNum}`);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
     },
 
     // --- Nimble Navigation Logic ---
@@ -246,13 +275,10 @@ const App = {
         this.state.nimble.level = 'book';
         this.state.testament = testament;
 
-        // Populate Overlay with Books
         const books = DataManager.getTestamentBooks(testament);
         this.renderNimbleList(books.map(b => ({ label: b.name, data: b })));
 
         this.els.nimbleOverlay.classList.remove('hidden');
-
-        // Haptic feedback if available
         if (navigator.vibrate) navigator.vibrate(50);
     },
 
@@ -264,10 +290,9 @@ const App = {
             const div = document.createElement('div');
             div.className = 'nimble-item';
             div.textContent = item.label;
-            div.dataset.value = item.label; // For identification
+            div.dataset.value = item.label;
             this.els.nimbleList.appendChild(div);
 
-            // Store ref for easy access
             this.state.nimble.listItems.push({
                 el: div,
                 data: item.data
@@ -277,61 +302,53 @@ const App = {
 
     handleNimbleMove(e) {
         if (!this.state.nimble.active) return;
-        e.preventDefault(); // Prevent scrolling
+        e.preventDefault();
 
         const touch = e.touches[0];
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
 
-        // If we are over a nimble item
         let itemEl = target;
         if (target && !target.classList.contains('nimble-item')) {
             itemEl = target.closest('.nimble-item');
         }
 
         if (!itemEl) {
-            // If we moved off an item, maybe cancel the current hover?
             if (this.state.nimble.currentItem) {
                 this.cancelHover();
             }
             return;
         }
 
-        // Find the data item
         const item = this.state.nimble.listItems.find(i => i.el === itemEl);
         if (!item) return;
 
         if (this.state.nimble.currentItem !== item) {
-            // New item hovered
             this.highlightNimbleItem(item);
             this.startHoverTimer(item);
         }
     },
 
     highlightNimbleItem(item) {
-        // Cancel previous
         this.cancelHover();
-
-        // Remove old active
         this.state.nimble.listItems.forEach(i => i.el.classList.remove('active'));
-
-        // Set new active
         item.el.classList.add('active');
         this.state.nimble.currentItem = item;
 
-        // Update preview
-        this.els.nimblePreview.textContent = item.data.name || item.data.number || item.data;
+        // Preview Text
+        let previewText = item.data.name || item.data.number || item.data;
+        if (this.state.nimble.level === 'chapter') previewText = `Ch ${previewText}`;
+        if (this.state.nimble.level === 'verse') previewText = `v${previewText}`;
 
-        // Scroll into view if needed
-        item.el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        this.els.nimblePreview.textContent = previewText;
+
+        // No auto-scroll in grid mode, user slides over it
     },
 
     startHoverTimer(item) {
-        // Start progress
         this.state.nimble.progressCleanup = this.showProgress(item.el, 1000);
-
         this.state.nimble.timer = setTimeout(() => {
             this.handleHoverComplete(item);
-        }, 1000); // 1 second hover
+        }, 1000);
     },
 
     cancelHover() {
@@ -348,45 +365,37 @@ const App = {
 
     handleHoverComplete(item) {
         if (navigator.vibrate) navigator.vibrate(20);
-
-        // Cleanup progress
         if (this.state.nimble.progressCleanup) {
             this.state.nimble.progressCleanup();
             this.state.nimble.progressCleanup = null;
         }
 
         if (this.state.nimble.level === 'book') {
-            // Selected a Book -> Show Chapters
             this.state.book = item.data;
             this.state.nimble.level = 'chapter';
-
             const chapters = item.data.chapters;
-            this.renderNimbleList(chapters.map(c => ({ label: `Ch ${c.number}`, data: c })));
-
+            this.renderNimbleList(chapters.map(c => ({ label: c.number, data: c })));
             this.els.nimblePreview.textContent = `${this.state.book.name}`;
-
-            // Reset current item so we can select again
             this.state.nimble.currentItem = null;
 
         } else if (this.state.nimble.level === 'chapter') {
-            // Selected a Chapter -> Go to Verse View
             this.state.chapter = item.data;
+            this.state.nimble.level = 'verse';
+            const verses = item.data.verses;
+            this.renderNimbleList(verses.map(v => ({ label: v.number, data: v })));
+            this.els.nimblePreview.textContent = `${this.state.book.name} ${this.state.chapter.number}`;
+            this.state.nimble.currentItem = null;
 
+        } else if (this.state.nimble.level === 'verse') {
+            // Selected a Verse -> Go to Verse View (scrolled)
+            const verse = item.data;
             this.endNimbleMode();
-            this.openVerseView(this.state.chapter);
+            this.openVerseView(this.state.chapter, verse.number);
         }
     },
 
     handleNimbleEnd(e) {
         if (!this.state.nimble.active) return;
-
-        // If we lift finger, we just close the mode?
-        // Or do we select if we were hovering?
-        // User said "without lifting my finger... show me verses".
-        // If they lift, let's just close for now, or maybe select if they were close?
-        // Let's stick to: Lift = Cancel/Close, unless we want to support "Tap to select" in nimble mode too?
-        // But nimble mode is overlay.
-        // Let's just close.
         this.endNimbleMode();
     },
 
@@ -397,7 +406,6 @@ const App = {
     }
 };
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     App.init();
 });
