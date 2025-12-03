@@ -170,22 +170,30 @@ const App = {
         // Create SVG path for rounded rectangle perimeter
         // Path follows the outside edge, offset inward by half stroke width
         // Starting from top-left (after corner), going clockwise
+        // Coordinates are relative to the expanded SVG (accounting for stroke overflow)
+        const svgWidth = width + stroke;
+        const svgHeight = height + stroke;
         const pathData = `
             M ${borderRadius + halfStroke},${halfStroke}
-            L ${width - borderRadius - halfStroke},${halfStroke}
-            A ${borderRadius} ${borderRadius} 0 0 1 ${width - halfStroke},${borderRadius + halfStroke}
-            L ${width - halfStroke},${height - borderRadius - halfStroke}
-            A ${borderRadius} ${borderRadius} 0 0 1 ${width - borderRadius - halfStroke},${height - halfStroke}
-            L ${borderRadius + halfStroke},${height - halfStroke}
-            A ${borderRadius} ${borderRadius} 0 0 1 ${halfStroke},${height - borderRadius - halfStroke}
+            L ${svgWidth - borderRadius - halfStroke},${halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${svgWidth - halfStroke},${borderRadius + halfStroke}
+            L ${svgWidth - halfStroke},${svgHeight - borderRadius - halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${svgWidth - borderRadius - halfStroke},${svgHeight - halfStroke}
+            L ${borderRadius + halfStroke},${svgHeight - halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${halfStroke},${svgHeight - borderRadius - halfStroke}
             L ${halfStroke},${borderRadius + halfStroke}
             A ${borderRadius} ${borderRadius} 0 0 1 ${borderRadius + halfStroke},${halfStroke}
         `.trim();
 
         const container = document.createElement('div');
         container.className = 'progress-container';
+        // Adjust container positioning to account for stroke overflow on all sides
+        container.style.top = `-${halfStroke}px`;
+        container.style.left = `-${halfStroke}px`;
+        container.style.width = `calc(100% + ${stroke}px)`;
+        container.style.height = `calc(100% + ${stroke}px)`;
         container.innerHTML = `
-            <svg class="progress-border" width="${width}" height="${height}">
+            <svg class="progress-border" width="${svgWidth}" height="${svgHeight}" viewBox="0 0 ${svgWidth} ${svgHeight}">
                 <path class="progress-border__path" stroke="white" stroke-width="${stroke}"
                     fill="transparent" d="${pathData}"
                     style="stroke-dasharray: ${perimeter} ${perimeter}; stroke-dashoffset: ${perimeter};" />
@@ -385,7 +393,7 @@ const App = {
         book.chapters.forEach((chapter, index) => {
             const div = document.createElement('div');
             div.className = 'grid-item';
-            div.textContent = chapter.number;
+            div.textContent = `ch. ${chapter.number}`;
             div.onclick = () => this.openVerseList(chapter);
             div.dataset.index = index;
             div.dataset.type = 'chapter';
@@ -412,7 +420,7 @@ const App = {
         chapter.verses.forEach((verse, index) => {
             const div = document.createElement('div');
             div.className = 'grid-item';
-            div.textContent = verse.number;
+            div.textContent = `v. ${verse.number}`;
             div.onclick = () => this.openVerseView(chapter, verse.number);
             div.dataset.index = index;
             div.dataset.type = 'verse';
