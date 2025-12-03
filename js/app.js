@@ -8,7 +8,8 @@ const App = {
             active: false,
             timer: null,
             currentItem: null,
-            progressCleanup: null
+            progressCleanup: null,
+            progressDelayTimer: null
         },
         verseSelection: {
             singleSelected: null,
@@ -461,16 +462,28 @@ const App = {
     },
 
     startHoverTimer(itemEl) {
-        this.state.nimble.progressCleanup = this.showProgress(itemEl, 1000);
+        // Progress indicator starts after 200ms delay
+        const progressDelayTimer = setTimeout(() => {
+            this.state.nimble.progressCleanup = this.showProgress(itemEl, 400);
+        }, 150);
+        
+        // Store progress delay timer for cleanup
+        this.state.nimble.progressDelayTimer = progressDelayTimer;
+        
+        // Total hover time is still 1000ms
         this.state.nimble.timer = setTimeout(() => {
             this.handleHoverComplete(itemEl);
-        }, 1000);
+        }, 600);
     },
 
     cancelHover() {
         if (this.state.nimble.timer) {
             clearTimeout(this.state.nimble.timer);
             this.state.nimble.timer = null;
+        }
+        if (this.state.nimble.progressDelayTimer) {
+            clearTimeout(this.state.nimble.progressDelayTimer);
+            this.state.nimble.progressDelayTimer = null;
         }
         if (this.state.nimble.progressCleanup) {
             this.state.nimble.progressCleanup();
@@ -482,6 +495,10 @@ const App = {
     handleHoverComplete(itemEl) {
         if (navigator.vibrate) navigator.vibrate(20);
 
+        if (this.state.nimble.progressDelayTimer) {
+            clearTimeout(this.state.nimble.progressDelayTimer);
+            this.state.nimble.progressDelayTimer = null;
+        }
         if (this.state.nimble.progressCleanup) {
             this.state.nimble.progressCleanup();
             this.state.nimble.progressCleanup = null;
