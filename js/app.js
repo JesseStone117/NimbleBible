@@ -111,27 +111,51 @@ const App = {
     },
 
     showProgress(target, duration) {
-        const isGridItem = target.classList.contains('grid-item');
-        const size = isGridItem ? 40 : 60;
+        const rect = target.getBoundingClientRect();
+        const width = rect.width;
+        const height = rect.height;
+        // Match CSS border-radius: big-btn uses 20px, grid-item uses 10px
+        const borderRadius = target.classList.contains('big-btn') ? 20 : 10;
         const stroke = 4;
-        const radius = (size - stroke) / 2;
-        const circumference = radius * 2 * Math.PI;
+        const halfStroke = stroke / 2; // Half stroke width to center stroke on edge
+        
+        // Calculate the perimeter of the rounded rectangle
+        // Perimeter = 2*(width - 2*r) + 2*(height - 2*r) + 2*π*r
+        const straightWidth = width - 2 * borderRadius;
+        const straightHeight = height - 2 * borderRadius;
+        const arcLength = Math.PI * borderRadius;
+        const perimeter = 2 * straightWidth + 2 * straightHeight + 2 * arcLength;
+
+        // Create SVG path for rounded rectangle perimeter
+        // Path follows the outside edge, offset inward by half stroke width
+        // Starting from top-left (after corner), going clockwise
+        const pathData = `
+            M ${borderRadius + halfStroke},${halfStroke}
+            L ${width - borderRadius - halfStroke},${halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${width - halfStroke},${borderRadius + halfStroke}
+            L ${width - halfStroke},${height - borderRadius - halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${width - borderRadius - halfStroke},${height - halfStroke}
+            L ${borderRadius + halfStroke},${height - halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${halfStroke},${height - borderRadius - halfStroke}
+            L ${halfStroke},${borderRadius + halfStroke}
+            A ${borderRadius} ${borderRadius} 0 0 1 ${borderRadius + halfStroke},${halfStroke}
+        `.trim();
 
         const container = document.createElement('div');
         container.className = 'progress-container';
         container.innerHTML = `
-            <svg class="progress-ring" width="${size}" height="${size}">
-                <circle class="progress-ring__circle" stroke="white" stroke-width="${stroke}"
-                    fill="transparent" r="${radius}" cx="${size / 2}" cy="${size / 2}"
-                    style="stroke-dasharray: ${circumference} ${circumference}; stroke-dashoffset: ${circumference};" />
+            <svg class="progress-border" width="${width}" height="${height}">
+                <path class="progress-border__path" stroke="white" stroke-width="${stroke}"
+                    fill="transparent" d="${pathData}"
+                    style="stroke-dasharray: ${perimeter} ${perimeter}; stroke-dashoffset: ${perimeter};" />
             </svg>`;
 
         target.appendChild(container);
         container.getBoundingClientRect();
 
-        const circle = container.querySelector('circle');
-        circle.style.transition = `stroke-dashoffset ${duration}ms linear`;
-        circle.style.strokeDashoffset = '0';
+        const path = container.querySelector('path');
+        path.style.transition = `stroke-dashoffset ${duration}ms linear`;
+        path.style.strokeDashoffset = '0';
 
         return () => {
             if (container.parentNode) container.parentNode.removeChild(container);
