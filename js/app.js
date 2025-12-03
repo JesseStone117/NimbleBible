@@ -530,7 +530,11 @@ const App = {
             }
 
             pressTimer = setTimeout(() => {
-                isLongPress = true;
+                // Long press detected - execute immediately
+                if (!hasMoved) {
+                    isLongPress = true;
+                    this.handleVerseLongPress(verseEl, verse);
+                }
             }, 500); // 500ms for long press
         };
 
@@ -560,17 +564,16 @@ const App = {
         const handleEnd = (e) => {
             clearTimeout(pressTimer);
             
-            // Only handle selection if there was no movement (not scrolling)
-            if (!hasMoved) {
+            // Only handle single tap if there was no movement and no long press occurred
+            if (!hasMoved && !isLongPress) {
                 e.preventDefault();
                 e.stopPropagation();
-                
-                if (isLongPress) {
-                    this.handleVerseLongPress(verseEl, verse);
-                } else {
-                    this.handleVerseSingleTap(verseEl, verse);
-                }
+                this.handleVerseSingleTap(verseEl, verse);
             }
+            
+            // Reset flags for next interaction
+            isLongPress = false;
+            hasMoved = false;
         };
 
         const handleCancel = () => {
