@@ -1,0 +1,32 @@
+# Node.js dependencies
+node_modules/
+npm-debug.log
+yarn-error.log
+yarn.lock
+
+# Environment variables (e.g., for Google GenAI API keys)
+.env
+.env.local
+.env.development
+.env.production
+
+# OS-specific files
+.DS_Store
+Thumbs.db
+
+# Editor and IDE files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+
+# Build output (if applicable)
+dist/
+build/
+out/
+
+# PowerShell script artifacts (if any)
+*.ps1.bak
