@@ -1,0 +1,11 @@
+{
+  "name": "nimblebible",
+  "version": "1.0.0",
+  "description": "Fast, frictionless Bible navigation",
+  "scripts": {
+    "generate-icons": "node generate-icons.js"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.5"
+  }
+}
