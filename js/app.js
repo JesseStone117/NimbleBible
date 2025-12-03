@@ -27,11 +27,16 @@ const App = {
 
     setupHistory() {
         // Push initial state
-        history.replaceState({ view: 'home' }, '', '');
+        history.replaceState({ 
+            view: 'homeView',
+            testament: null,
+            book: null,
+            chapter: null
+        }, '', '');
 
         // Browser back button handler
-        window.addEventListener('popstate', () => {
-            this.goBack();
+        window.addEventListener('popstate', (e) => {
+            this.restoreFromHistory(e.state);
         });
     },
 
@@ -133,7 +138,7 @@ const App = {
         };
     },
 
-    switchView(viewId) {
+    switchView(viewId, skipHistory = false) {
         document.querySelectorAll('.view').forEach(v => {
             v.classList.add('hidden');
             v.classList.remove('active');
@@ -142,24 +147,94 @@ const App = {
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
 
-        // Push state for browser back button (except home)
-        if (viewId !== 'homeView') {
-            history.pushState({ view: viewId }, '', '');
+        // Push state for browser back button (except home and when restoring from history)
+        if (!skipHistory && viewId !== 'homeView') {
+            history.pushState({ 
+                view: viewId,
+                testament: this.state.testament,
+                book: this.state.book ? { name: this.state.book.name } : null,
+                chapter: this.state.chapter ? { number: this.state.chapter.number } : null
+            }, '', '');
         }
     },
 
     goBack() {
-        if (this.state.currentView === 'verse-view') {
-            if (this.state.chapter) this.openVerseList(this.state.chapter);
-            else this.switchView('homeView');
-        } else if (this.state.currentView === 'verse-list-view') {
-            if (this.state.book) this.openChapterList(this.state.book);
-            else this.switchView('homeView');
-        } else if (this.state.currentView === 'chapter-view') {
-            if (this.state.testament) this.openBookList(this.state.testament);
-            else this.switchView('homeView');
-        } else if (this.state.currentView === 'book-view') {
-            this.switchView('homeView');
+        // Don't go back if we're already on home
+        if (this.state.currentView === 'homeView') {
+            return;
+        }
+
+        // Use browser history back when possible
+        if (history.length > 1) {
+            history.back();
+        } else {
+            // Fallback to manual navigation if no history
+            this.navigateToPreviousView();
+        }
+    },
+
+    navigateToPreviousView() {
+        if (this.state.currentView === 'verseView') {
+            if (this.state.chapter && this.state.book) {
+                this.openVerseList(this.state.chapter, true);
+            } else {
+                this.switchView('homeView', true);
+            }
+        } else if (this.state.currentView === 'verseListView') {
+            if (this.state.book) {
+                this.openChapterList(this.state.book, true);
+            } else {
+                this.switchView('homeView', true);
+            }
+        } else if (this.state.currentView === 'chapterView') {
+            if (this.state.testament) {
+                this.openBookList(this.state.testament, true);
+            } else {
+                this.switchView('homeView', true);
+            }
+        } else if (this.state.currentView === 'bookView') {
+            this.switchView('homeView', true);
+        }
+    },
+
+    restoreFromHistory(state) {
+        if (!state || state.view === 'homeView') {
+            this.state.testament = null;
+            this.state.book = null;
+            this.state.chapter = null;
+            this.switchView('homeView', true);
+            return;
+        }
+
+        // Restore state
+        this.state.testament = state.testament || null;
+        
+        // Restore book if we have testament
+        if (state.testament && state.book) {
+            const books = DataManager.getTestamentBooks(state.testament);
+            this.state.book = books.find(b => b.name === state.book.name) || null;
+        } else {
+            this.state.book = null;
+        }
+
+        // Restore chapter if we have book
+        if (this.state.book && state.chapter) {
+            this.state.chapter = this.state.book.chapters.find(c => c.number === state.chapter.number) || null;
+        } else {
+            this.state.chapter = null;
+        }
+
+        // Navigate to the appropriate view
+        if (state.view === 'verseView' && this.state.chapter) {
+            this.openVerseView(this.state.chapter, 1, true);
+        } else if (state.view === 'verseListView' && this.state.chapter) {
+            this.openVerseList(this.state.chapter, true);
+        } else if (state.view === 'chapterView' && this.state.book) {
+            this.openChapterList(this.state.book, true);
+        } else if (state.view === 'bookView' && this.state.testament) {
+            this.openBookList(this.state.testament, true);
+        } else {
+            this.switchView('homeView', true);
         }
     },
 
@@ -167,7 +242,7 @@ const App = {
         this.switchView('homeView');
     },
 
-    openBookList(testament) {
+    openBookList(testament, skipHistory = false) {
         this.state.testament = testament;
         this.els.testamentTitle.textContent = testament;
 
@@ -185,10 +260,10 @@ const App = {
             this.els.bookList.appendChild(div);
         });
 
-        this.switchView('bookView');
+        this.switchView('bookView', skipHistory);
     },
 
-    openChapterList(book) {
+    openChapterList(book, skipHistory = false) {
         this.state.book = book;
         this.els.bookTitle.textContent = book.name;
 
@@ -204,10 +279,10 @@ const App = {
             this.els.chapterList.appendChild(div);
         });
 
-        this.switchView('chapterView');
+        this.switchView('chapterView', skipHistory);
     },
 
-    openVerseList(chapter) {
+    openVerseList(chapter, skipHistory = false) {
         this.state.chapter = chapter;
         this.els.verseListTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
@@ -223,10 +298,10 @@ const App = {
             this.els.verseList.appendChild(div);
         });
 
-        this.switchView('verseListView');
+        this.switchView('verseListView', skipHistory);
     },
 
-    openVerseView(chapter, targetVerseNum = 1) {
+    openVerseView(chapter, targetVerseNum = 1, skipHistory = false) {
         this.state.chapter = chapter;
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
@@ -244,7 +319,7 @@ const App = {
             this.els.verseContent.appendChild(p);
         });
 
-        this.switchView('verseView');
+        this.switchView('verseView', skipHistory);
 
         setTimeout(() => {
             const el = document.getElementById(`verse-${targetVerseNum}`);
