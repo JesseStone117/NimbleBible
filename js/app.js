@@ -21,7 +21,18 @@ const App = {
 
         this.cacheElements();
         this.bindEvents();
+        this.setupHistory();
         this.renderHome();
+    },
+
+    setupHistory() {
+        // Push initial state
+        history.replaceState({ view: 'home' }, '', '');
+
+        // Browser back button handler
+        window.addEventListener('popstate', () => {
+            this.goBack();
+        });
     },
 
     cacheElements() {
@@ -130,6 +141,11 @@ const App = {
         this.els[viewId].classList.remove('hidden');
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
+
+        // Push state for browser back button (except home)
+        if (viewId !== 'homeView') {
+            history.pushState({ view: viewId }, '', '');
+        }
     },
 
     goBack() {
@@ -250,8 +266,22 @@ const App = {
         e.preventDefault();
 
         const touch = e.touches[0];
-        const target = document.elementFromPoint(touch.clientX, touch.clientY);
 
+        // Auto-scroll logic
+        const activeList = document.querySelector('.view.active .grid-list');
+        if (activeList) {
+            const listRect = activeList.getBoundingClientRect();
+            const scrollThreshold = 80;
+            const scrollSpeed = 8;
+
+            if (touch.clientY > listRect.bottom - scrollThreshold) {
+                activeList.scrollTop += scrollSpeed;
+            } else if (touch.clientY < listRect.top + scrollThreshold) {
+                activeList.scrollTop -= scrollSpeed;
+            }
+        }
+
+        const target = document.elementFromPoint(touch.clientX, touch.clientY);
         let itemEl = target?.closest('.grid-item');
         if (!itemEl) {
             if (this.state.nimble.currentItem) this.cancelHover();

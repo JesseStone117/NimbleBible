@@ -117,6 +117,7 @@ h1 {
     gap: 10px;
     padding: 20px;
     padding-top: 40vh;
+    padding-bottom: 40vh;
     overflow-y: auto;
     flex: 1;
     align-content: start;
@@ -148,6 +149,7 @@ h1 {
     width: 100%;
     padding: 20px;
     padding-top: 40vh;
+    padding-bottom: 40vh;
     overflow-y: auto;
     flex: 1;
     font-size: 1.1rem;
