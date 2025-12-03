@@ -47,7 +47,7 @@ const App = {
 
             nimbleOverlay: document.getElementById('nimble-overlay'),
             nimbleList: document.getElementById('nimble-list'),
-            nimblePreview: document.getElementById('nimble-preview'),
+            // nimblePreview removed
 
             btnOT: document.getElementById('btn-ot'),
             btnNT: document.getElementById('btn-nt')
@@ -56,8 +56,14 @@ const App = {
 
     bindEvents() {
         // Global Back Buttons
+        // Use event delegation or re-bind? Delegation is safer if elements change, but they are static here.
+        // Let's verify we are catching them.
         document.querySelectorAll('.back-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.goBack());
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // Prevent bubbling issues
+                this.goBack();
+            });
         });
 
         // Home Buttons (Tap)
@@ -156,9 +162,14 @@ const App = {
         this.els[viewId].classList.remove('hidden');
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
+
+        // Scroll to top of new view
+        const list = this.els[viewId].querySelector('.grid-list, .scroll-content');
+        if (list) list.scrollTop = 0;
     },
 
     goBack() {
+        console.log('Going back from', this.state.currentView);
         // Hierarchy: verseView -> verseListView -> chapterView -> bookView -> homeView
         if (this.state.currentView === 'verse-view') {
             // Go back to Verse List (re-render it)
@@ -334,14 +345,7 @@ const App = {
         item.el.classList.add('active');
         this.state.nimble.currentItem = item;
 
-        // Preview Text
-        let previewText = item.data.name || item.data.number || item.data;
-        if (this.state.nimble.level === 'chapter') previewText = `Ch ${previewText}`;
-        if (this.state.nimble.level === 'verse') previewText = `v${previewText}`;
-
-        this.els.nimblePreview.textContent = previewText;
-
-        // No auto-scroll in grid mode, user slides over it
+        // No preview text update needed as requested
     },
 
     startHoverTimer(item) {
@@ -375,7 +379,6 @@ const App = {
             this.state.nimble.level = 'chapter';
             const chapters = item.data.chapters;
             this.renderNimbleList(chapters.map(c => ({ label: c.number, data: c })));
-            this.els.nimblePreview.textContent = `${this.state.book.name}`;
             this.state.nimble.currentItem = null;
 
         } else if (this.state.nimble.level === 'chapter') {
@@ -383,7 +386,6 @@ const App = {
             this.state.nimble.level = 'verse';
             const verses = item.data.verses;
             this.renderNimbleList(verses.map(v => ({ label: v.number, data: v })));
-            this.els.nimblePreview.textContent = `${this.state.book.name} ${this.state.chapter.number}`;
             this.state.nimble.currentItem = null;
 
         } else if (this.state.nimble.level === 'verse') {
