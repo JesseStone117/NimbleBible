@@ -9,6 +9,11 @@ const App = {
             timer: null,
             currentItem: null,
             progressCleanup: null
+        },
+        verseSelection: {
+            singleSelected: null,
+            rangeStart: null,
+            rangeEnd: null
         }
     },
 
@@ -85,6 +90,27 @@ const App = {
 
         document.addEventListener('touchend', () => {
             if (this.state.nimble.active) this.endNimbleMode();
+        });
+
+        // Prevent text selection globally
+        this.preventTextSelection();
+    },
+
+    preventTextSelection() {
+        // Prevent text selection via various events
+        document.addEventListener('selectstart', (e) => {
+            e.preventDefault();
+        }, { passive: false });
+
+        document.addEventListener('dragstart', (e) => {
+            e.preventDefault();
+        });
+
+        // Prevent text selection on double click
+        document.addEventListener('mousedown', (e) => {
+            if (e.detail > 1) {
+                e.preventDefault();
+            }
         });
     },
 
@@ -329,16 +355,27 @@ const App = {
         this.state.chapter = chapter;
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
+        // Reset verse selection
+        this.state.verseSelection = {
+            singleSelected: null,
+            rangeStart: null,
+            rangeEnd: null
+        };
+
         this.els.verseContent.innerHTML = '';
         chapter.verses.forEach(verse => {
             const p = document.createElement('div');
             p.className = 'verse';
             p.id = `verse-${verse.number}`;
+            p.dataset.verseNumber = verse.number;
             p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
 
             if (verse.number === targetVerseNum) {
                 p.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
             }
+
+            // Add verse selection handlers
+            this.bindVerseSelection(p, verse);
 
             this.els.verseContent.appendChild(p);
         });
@@ -454,6 +491,182 @@ const App = {
         this.state.nimble.active = false;
         this.cancelHover();
         document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
+    },
+
+    bindVerseSelection(verseEl, verse) {
+        let pressTimer;
+        let isLongPress = false;
+
+        const handleStart = (e) => {
+            // Prevent text selection
+            e.preventDefault();
+            e.stopPropagation();
+            isLongPress = false;
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                this.handleVerseLongPress(verseEl, verse);
+            }, 500); // 500ms for long press
+        };
+
+        const handleEnd = (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            clearTimeout(pressTimer);
+            if (!isLongPress) {
+                this.handleVerseSingleTap(verseEl, verse);
+            }
+        };
+
+        const handleCancel = () => {
+            clearTimeout(pressTimer);
+        };
+
+        // Touch events
+        verseEl.addEventListener('touchstart', handleStart, { passive: false });
+        verseEl.addEventListener('touchend', handleEnd, { passive: false });
+        verseEl.addEventListener('touchcancel', handleCancel, { passive: false });
+        verseEl.addEventListener('touchmove', handleCancel, { passive: false });
+
+        // Mouse events (for desktop/testing)
+        verseEl.addEventListener('mousedown', handleStart);
+        verseEl.addEventListener('mouseup', handleEnd);
+        verseEl.addEventListener('mouseleave', handleCancel);
+
+        // Prevent context menu
+        verseEl.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+        });
+
+        // Prevent text selection via CSS and JS
+        verseEl.addEventListener('selectstart', (e) => {
+            e.preventDefault();
+        });
+    },
+
+    handleVerseSingleTap(verseEl, verse) {
+        const verseNum = parseInt(verseEl.dataset.verseNumber);
+
+        // If we have a range selection, clear it first
+        if (this.state.verseSelection.rangeStart !== null || this.state.verseSelection.rangeEnd !== null) {
+            this.clearVerseSelection();
+        }
+
+        // If this verse is already selected, deselect it
+        if (this.state.verseSelection.singleSelected === verseNum) {
+            this.state.verseSelection.singleSelected = null;
+            verseEl.classList.remove('selected');
+        } else {
+            // Deselect previous single selection
+            if (this.state.verseSelection.singleSelected !== null) {
+                const prevEl = document.getElementById(`verse-${this.state.verseSelection.singleSelected}`);
+                if (prevEl) prevEl.classList.remove('selected');
+            }
+
+            // Select this verse
+            this.state.verseSelection.singleSelected = verseNum;
+            verseEl.classList.add('selected');
+
+            // Copy verse text to clipboard
+            this.copySelectedVerses();
+        }
+    },
+
+    handleVerseLongPress(verseEl, verse) {
+        const verseNum = parseInt(verseEl.dataset.verseNumber);
+        const singleSelected = this.state.verseSelection.singleSelected;
+
+        // If no single selection exists, just select this verse as single
+        if (singleSelected === null) {
+            this.handleVerseSingleTap(verseEl, verse);
+            return;
+        }
+
+        // Clear single selection and create range
+        const prevEl = document.getElementById(`verse-${singleSelected}`);
+        if (prevEl) prevEl.classList.remove('selected');
+
+        this.state.verseSelection.singleSelected = null;
+        this.state.verseSelection.rangeStart = Math.min(singleSelected, verseNum);
+        this.state.verseSelection.rangeEnd = Math.max(singleSelected, verseNum);
+
+        // Highlight all verses in range
+        this.updateVerseRangeSelection();
+
+        // Copy selected verses to clipboard
+        this.copySelectedVerses();
+    },
+
+    updateVerseRangeSelection() {
+        // Clear all selections first
+        document.querySelectorAll('.verse').forEach(el => {
+            el.classList.remove('selected', 'range-selected');
+        });
+
+        const start = this.state.verseSelection.rangeStart;
+        const end = this.state.verseSelection.rangeEnd;
+
+        if (start !== null && end !== null) {
+            for (let i = start; i <= end; i++) {
+                const el = document.getElementById(`verse-${i}`);
+                if (el) {
+                    el.classList.add('range-selected');
+                }
+            }
+        }
+    },
+
+    clearVerseSelection() {
+        document.querySelectorAll('.verse').forEach(el => {
+            el.classList.remove('selected', 'range-selected');
+        });
+        this.state.verseSelection = {
+            singleSelected: null,
+            rangeStart: null,
+            rangeEnd: null
+        };
+    },
+
+    copySelectedVerses() {
+        const selection = this.state.verseSelection;
+        let textToCopy = '';
+
+        if (selection.singleSelected !== null) {
+            const verse = this.state.chapter.verses.find(v => v.number === selection.singleSelected);
+            if (verse) {
+                textToCopy = `${this.state.book.name} ${this.state.chapter.number}:${verse.number} ${verse.text}`;
+            }
+        } else if (selection.rangeStart !== null && selection.rangeEnd !== null) {
+            const verses = this.state.chapter.verses.filter(v => 
+                v.number >= selection.rangeStart && v.number <= selection.rangeEnd
+            );
+            if (verses.length > 0) {
+                const verseTexts = verses.map(v => `${v.number} ${v.text}`).join(' ');
+                textToCopy = `${this.state.book.name} ${this.state.chapter.number}:${verses[0].number}-${verses[verses.length - 1].number} ${verseTexts}`;
+            }
+        }
+
+        if (textToCopy) {
+            // Copy to clipboard
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(textToCopy).catch(err => {
+                    console.error('Failed to copy text:', err);
+                });
+            } else {
+                // Fallback for older browsers
+                const textArea = document.createElement('textarea');
+                textArea.value = textToCopy;
+                textArea.style.position = 'fixed';
+                textArea.style.opacity = '0';
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                } catch (err) {
+                    console.error('Fallback copy failed:', err);
+                }
+                document.body.removeChild(textArea);
+            }
+        }
     }
 };
 
