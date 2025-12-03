@@ -87,9 +87,9 @@ const App = {
         this.els.btnOT.addEventListener('click', () => this.openBookList('Old Testament'));
         this.els.btnNT.addEventListener('click', () => this.openBookList('New Testament'));
 
-        // Nimble triggers (long press)
-        this.bindNimbleTrigger(this.els.btnOT, 'Old Testament');
-        this.bindNimbleTrigger(this.els.btnNT, 'New Testament');
+        // Nimble triggers (long press) for home buttons
+        this.bindNimbleTrigger(this.els.btnOT, { testament: 'Old Testament' });
+        this.bindNimbleTrigger(this.els.btnNT, { testament: 'New Testament' });
 
         // Global touch handlers for nimble mode
         document.addEventListener('touchmove', (e) => {
@@ -129,13 +129,13 @@ const App = {
         });
     },
 
-    bindNimbleTrigger(element, testament) {
+    bindNimbleTrigger(element, context) {
         let pressTimer, progressCleanup;
 
         const start = () => {
             progressCleanup = this.showProgress(element, 500);
             pressTimer = setTimeout(() => {
-                this.startNimbleMode(testament);
+                this.startNimbleMode(context);
             }, 500);
         };
 
@@ -356,6 +356,13 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'book';
             div.data = book;
+            
+            // Bind nimble trigger for long press navigation
+            this.bindNimbleTrigger(div, { 
+                testament: testament, 
+                book: book 
+            });
+            
             this.els.bookList.appendChild(div);
         });
 
@@ -375,6 +382,14 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'chapter';
             div.data = chapter;
+            
+            // Bind nimble trigger for long press navigation
+            this.bindNimbleTrigger(div, { 
+                testament: this.state.testament, 
+                book: book, 
+                chapter: chapter 
+            });
+            
             this.els.chapterList.appendChild(div);
         });
 
@@ -394,6 +409,15 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'verse';
             div.data = verse;
+            
+            // Bind nimble trigger for long press navigation
+            this.bindNimbleTrigger(div, { 
+                testament: this.state.testament, 
+                book: this.state.book, 
+                chapter: chapter, 
+                verse: verse.number 
+            });
+            
             this.els.verseList.appendChild(div);
         });
 
@@ -439,11 +463,39 @@ const App = {
     },
 
     // NIMBLE NAVIGATION - Uses standard views directly
-    startNimbleMode(testament) {
+    startNimbleMode(context) {
         if (this.state.nimble.active) return;
 
         this.state.nimble.active = true;
-        this.openBookList(testament);
+
+        // Determine starting view based on context
+        if (context.testament && !context.book) {
+            // Starting from home: open book list
+            this.openBookList(context.testament);
+        } else if (context.book && !context.chapter) {
+            // Starting from book view: open chapter list
+            this.openChapterList(context.book);
+        } else if (context.chapter && !context.verse) {
+            // Starting from chapter view: open verse list
+            this.openVerseList(context.chapter);
+        } else if (context.chapter && context.verse) {
+            // Starting from verse list: open verse view
+            this.openVerseView(context.chapter, context.verse);
+        } else {
+            // Fallback: if we have testament, start from book list
+            if (context.testament) {
+                this.openBookList(context.testament);
+            } else if (this.state.testament) {
+                // Use current state if available
+                if (this.state.chapter) {
+                    this.openVerseList(this.state.chapter);
+                } else if (this.state.book) {
+                    this.openChapterList(this.state.book);
+                } else {
+                    this.openBookList(this.state.testament);
+                }
+            }
+        }
 
         if (navigator.vibrate) navigator.vibrate(50);
     },
