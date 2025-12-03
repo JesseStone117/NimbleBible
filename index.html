@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>NimbleBible</title>
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/style.css">
+    <meta name="theme-color" content="#121212">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+</head>
+
+<body>
+    <div id="app">
+        <!-- Views will be injected here -->
+        <div id="home-view" class="view active">
+            <button id="btn-ot" class="big-btn" data-testament="Old Testament">Old Testament</button>
+            <button id="btn-nt" class="big-btn" data-testament="New Testament">New Testament</button>
+        </div>
+
+        <div id="book-view" class="view hidden">
+            <div class="header">
+                <button class="back-btn">←</button>
+                <h1 id="testament-title">Testament</h1>
+            </div>
+            <div id="book-list" class="grid-list"></div>
+        </div>
+
+        <div id="chapter-view" class="view hidden">
+            <div class="header">
+                <button class="back-btn">←</button>
+                <h1 id="book-title">Book</h1>
+            </div>
+            <div id="chapter-list" class="grid-list"></div>
+        </div>
+
+        <div id="verse-view" class="view hidden">
+            <div class="header">
+                <button class="back-btn">←</button>
+                <h1 id="chapter-title">Chapter</h1>
+            </div>
+            <div id="verse-content" class="scroll-content"></div>
+        </div>
+    </div>
+
+    <!-- Overlay for Nimble Navigation -->
+    <div id="nimble-overlay" class="hidden">
+        <div id="nimble-list"></div>
+        <div id="nimble-preview"></div>
+    </div>
+
+    <script src="js/data.js"></script>
+    <script src="js/app.js"></script>
+    <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+    </script>
+</body>
+
+</html>
