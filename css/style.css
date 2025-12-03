@@ -126,6 +126,18 @@ body {
     padding: 10px;
     margin-right: 10px;
     cursor: pointer;
+    flex-shrink: 0;
+}
+
+.home-btn {
+    background: none;
+    border: none;
+    color: var(--text-color);
+    font-size: 1.5rem;
+    padding: 10px;
+    margin-left: 10px;
+    cursor: pointer;
+    flex-shrink: 0;
 }
 
 h1 {
@@ -133,7 +145,6 @@ h1 {
     margin: 0;
     flex-grow: 1;
     text-align: center;
-    margin-right: 40px;
     min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;

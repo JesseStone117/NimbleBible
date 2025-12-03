@@ -78,6 +78,11 @@ const App = {
             btn.addEventListener('click', () => this.goBack());
         });
 
+        // Home buttons
+        document.querySelectorAll('.home-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.goHome());
+        });
+
         // Home buttons (tap)
         this.els.btnOT.addEventListener('click', () => this.openBookList('Old Testament'));
         this.els.btnNT.addEventListener('click', () => this.openBookList('New Testament'));
@@ -236,6 +241,35 @@ const App = {
             // Fallback to manual navigation if no history
             this.navigateToPreviousView();
         }
+    },
+
+    goHome() {
+        // Don't navigate if we're already on home
+        if (this.state.currentView === 'homeView') {
+            return;
+        }
+
+        // Reset state
+        this.state.testament = null;
+        this.state.book = null;
+        this.state.chapter = null;
+        this.state.verseSelection = {
+            singleSelected: null,
+            rangeStart: null,
+            rangeEnd: null
+        };
+        this.hideToolbar();
+
+        // Navigate to home
+        this.switchView('homeView', true);
+        
+        // Replace history state to avoid cluttering browser history
+        history.replaceState({ 
+            view: 'homeView',
+            testament: null,
+            book: null,
+            chapter: null
+        }, '', '');
     },
 
     navigateToPreviousView() {
