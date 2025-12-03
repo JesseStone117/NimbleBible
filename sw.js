@@ -10,7 +10,11 @@ const PRECACHE_ASSETS = [
     './js/app.js',
     './js/data.js',
     './data/esv.json',
-    './manifest.json'
+    './manifest.json',
+    './icons/icon-192.png',
+    './icons/icon-512.png',
+    './icons/icon-maskable-192.png',
+    './icons/icon-maskable-512.png'
 ];
 
 // Install event - precache assets

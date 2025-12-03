@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192">
+    <!-- Safe zone for maskable icons (80% of canvas) -->
+    <rect width="192" height="192" fill="#1e1e1e"/>
+    <circle cx="96" cy="96" r="76" fill="#1e1e1e"/>
+    <text x="96" y="120" font-size="100" text-anchor="middle" fill="#3b82f6" font-family="sans-serif" font-weight="bold">NB</text>
+</svg>
+

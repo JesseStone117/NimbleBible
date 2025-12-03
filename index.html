@@ -18,11 +18,11 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NimbleBible">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect width='180' height='180' fill='%231e1e1e'/><text x='90' y='115' font-size='94' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>">
+    <link rel="apple-touch-icon" href="./icons/icon-192.png">
     
     <!-- Microsoft Tiles -->
     <meta name="msapplication-TileColor" content="#121212">
-    <meta name="msapplication-TileImage" content="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 144 144'><rect width='144' height='144' fill='%231e1e1e'/><text x='72' y='96' font-size='84' text-anchor='middle' fill='%233b82f6' font-family='sans-serif' font-weight='bold'>NB</text></svg>">
+    <meta name="msapplication-TileImage" content="./icons/icon-192.png">
     <meta name="msapplication-config" content="none">
 </head>
 
@@ -87,15 +87,15 @@
             });
         }
         
-        // Handle PWA install prompt
-        let deferredPrompt;
+        // Handle PWA install prompt (allow native Chrome prompt)
         window.addEventListener('beforeinstallprompt', (e) => {
-            // Prevent the mini-infobar from appearing
-            e.preventDefault();
-            // Stash the event so it can be triggered later
-            deferredPrompt = e;
-            // Optionally, show your own install UI
             console.log('PWA install prompt available');
+            // Don't prevent default - let Chrome show its native install UI
+        });
+        
+        // Track if app is installed
+        window.addEventListener('appinstalled', () => {
+            console.log('PWA installed successfully');
         });
     </script>
 </body>

@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Icon Generator - NimbleBible</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #121212;
+            color: #fff;
+        }
+        .icon-preview {
+            display: inline-block;
+            margin: 10px;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #333;
+            background: #1e1e1e;
+        }
+        button {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background: #3b82f6;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        button:hover {
+            background: #2563eb;
+        }
+        .info {
+            background: #1e1e1e;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <h1>NimbleBible Icon Generator</h1>
+    <div class="info">
+        <p>This page generates PNG icons required for PWA installation on Chrome Android.</p>
+        <p>Click "Generate All Icons" to create and download all required icon sizes.</p>
+    </div>
+    
+    <div id="previews"></div>
+    
+    <button onclick="generateAllIcons()">Generate All Icons</button>
+
+    <script>
+        const sizes = [
+            { size: 192, purpose: 'any' },
+            { size: 512, purpose: 'any' },
+            { size: 192, purpose: 'maskable' },
+            { size: 512, purpose: 'maskable' }
+        ];
+
+        function createIcon(size, isMaskable = false) {
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
+            const ctx = canvas.getContext('2d');
+
+            // Background
+            ctx.fillStyle = '#1e1e1e';
+            ctx.fillRect(0, 0, size, size);
+
+            if (isMaskable) {
+                // Draw safe zone circle (80% of canvas)
+                const centerX = size / 2;
+                const centerY = size / 2;
+                const radius = size * 0.4;
+                ctx.beginPath();
+                ctx.arc(centerX, centerY, radius, 0, 2 * Math.PI);
+                ctx.fillStyle = '#1e1e1e';
+                ctx.fill();
+            }
+
+            // Text "NB"
+            ctx.fillStyle = '#3b82f6';
+            ctx.font = `bold ${size * 0.52}px sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('NB', size / 2, size / 2);
+
+            return canvas;
+        }
+
+        function downloadCanvas(canvas, filename) {
+            canvas.toBlob((blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 'image/png');
+        }
+
+        function generateAllIcons() {
+            sizes.forEach(({ size, purpose }) => {
+                const isMaskable = purpose === 'maskable';
+                const canvas = createIcon(size, isMaskable);
+                const filename = isMaskable 
+                    ? `icon-maskable-${size}.png`
+                    : `icon-${size}.png`;
+                
+                // Small delay between downloads
+                setTimeout(() => {
+                    downloadCanvas(canvas, filename);
+                }, sizes.indexOf({ size, purpose }) * 200);
+            });
+
+            alert('Icons generated! Check your downloads folder. Move them to the icons/ directory.');
+        }
+
+        // Show previews
+        window.addEventListener('load', () => {
+            const previewsDiv = document.getElementById('previews');
+            sizes.forEach(({ size, purpose }) => {
+                const isMaskable = purpose === 'maskable';
+                const canvas = createIcon(size, isMaskable);
+                const div = document.createElement('div');
+                div.className = 'icon-preview';
+                div.innerHTML = `
+                    <canvas width="${size}" height="${size}" style="width: 100px; height: 100px;"></canvas>
+                    <p>${size}x${size} (${purpose})</p>
+                `;
+                const previewCanvas = div.querySelector('canvas');
+                const previewCtx = previewCanvas.getContext('2d');
+                previewCtx.drawImage(canvas, 0, 0, size, size, 0, 0, 100, 100);
+                previewsDiv.appendChild(div);
+            });
+        });
+    </script>
+</body>
+</html>
+
