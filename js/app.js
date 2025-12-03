@@ -212,6 +212,14 @@ const App = {
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
 
+        // Ensure headers are always visible for non-home views (CSS handles this, but explicit check)
+        if (viewId !== 'homeView') {
+            const currentHeader = this.els[viewId].querySelector('.header');
+            if (currentHeader) {
+                currentHeader.style.display = 'flex';
+            }
+        }
+
         // Hide toolbar when leaving verse view
         if (viewId !== 'verseView') {
             this.hideToolbar();

@@ -118,6 +118,11 @@ body {
     overflow: hidden;
 }
 
+/* Ensure headers are always visible for non-home views */
+.view:not(#home-view) .header {
+    display: flex !important;
+}
+
 .back-btn {
     background: none;
     border: none;
