@@ -29,6 +29,7 @@ body {
     height: 100%;
     width: 100%;
     position: relative;
+    overflow: hidden;
 }
 
 .view {
@@ -41,17 +42,15 @@ body {
     flex-direction: column;
     background-color: var(--bg-color);
     transition: transform 0.3s ease;
+    overflow: hidden;
 }
 
 .view.hidden {
-    transform: translateX(100%);
-    pointer-events: none;
-    z-index: 0;
+    display: none;
 }
 
 .view.active {
-    transform: translateX(0);
-    z-index: 1;
+    display: flex;
 }
 
 /* Home View */
@@ -119,7 +118,7 @@ h1 {
     padding: 20px;
     padding-top: 40vh;
     overflow-y: auto;
-    flex-grow: 1;
+    flex: 1;
     align-content: start;
 }
 
@@ -145,16 +144,12 @@ h1 {
 }
 
 /* Verse View */
-#verse-view {
-    padding-top: var(--safe-area-top);
-    padding-bottom: var(--safe-area-bottom);
-}
-
 #verse-content {
+    width: 100%;
     padding: 20px;
     padding-top: 40vh;
     overflow-y: auto;
-    flex-grow: 1;
+    flex: 1;
     font-size: 1.1rem;
     line-height: 1.6;
     user-select: text;
