@@ -33,7 +33,7 @@ const App = {
 
     setupHistory() {
         // Push initial state
-        history.replaceState({ 
+        history.replaceState({
             view: 'homeView',
             testament: null,
             book: null,
@@ -68,7 +68,14 @@ const App = {
             chapterTitle: document.getElementById('chapter-title'),
 
             btnOT: document.getElementById('btn-ot'),
-            btnNT: document.getElementById('btn-nt')
+            btnNT: document.getElementById('btn-nt'),
+
+            // Audio elements
+            audioToolbar: document.getElementById('audio-toolbar'),
+            audioPlayBtn: document.getElementById('audio-play-btn'),
+            audioRange: document.getElementById('audio-range'),
+            scrubberProgress: document.getElementById('scrubber-progress'),
+            audioTime: document.getElementById('audio-time')
         };
     },
 
@@ -109,6 +116,98 @@ const App = {
                 this.copySelectedVerses();
             });
         }
+
+        // Audio controls
+        this.bindAudioControls();
+    },
+
+    bindAudioControls() {
+        // Play/pause button
+        if (this.els.audioPlayBtn) {
+            this.els.audioPlayBtn.addEventListener('click', () => {
+                AudioManager.togglePlayPause();
+            });
+        }
+
+        // Scrubber seek
+        if (this.els.audioRange) {
+            this.els.audioRange.addEventListener('input', (e) => {
+                const percent = parseInt(e.target.value);
+                const verseIndex = AudioManager.getVerseIndexFromProgress(percent);
+                AudioManager.seekToVerse(verseIndex);
+            });
+        }
+
+        // AudioManager callbacks
+        AudioManager.onVerseChange = (verseNumber, verseIndex) => {
+            this.handleAudioVerseChange(verseNumber);
+            this.updateAudioUI();
+        };
+
+        AudioManager.onProgressUpdate = (progress, verseIndex) => {
+            this.updateAudioUI();
+        };
+
+        AudioManager.onPlayStateChange = (isPlaying, isPaused) => {
+            this.updateAudioPlayButton(isPlaying);
+        };
+    },
+
+    handleAudioVerseChange(verseNumber) {
+        if (verseNumber === null) return;
+
+        // Remove previous audio-active
+        document.querySelectorAll('.verse.audio-active').forEach(el => {
+            el.classList.remove('audio-active');
+        });
+
+        // Add audio-active to current verse
+        const verseEl = document.getElementById(`verse-${verseNumber}`);
+        if (verseEl) {
+            verseEl.classList.add('audio-active');
+            verseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+    },
+
+    updateAudioUI() {
+        const progress = AudioManager.getProgress();
+
+        // Update scrubber
+        if (this.els.audioRange) {
+            this.els.audioRange.value = progress;
+        }
+        if (this.els.scrubberProgress) {
+            this.els.scrubberProgress.style.width = `${progress}%`;
+        }
+
+        // Update time display
+        if (this.els.audioTime) {
+            this.els.audioTime.textContent = AudioManager.getTimeDisplay();
+        }
+    },
+
+    updateAudioPlayButton(isPlaying) {
+        if (this.els.audioPlayBtn) {
+            if (isPlaying) {
+                this.els.audioPlayBtn.classList.add('playing');
+            } else {
+                this.els.audioPlayBtn.classList.remove('playing');
+            }
+        }
+    },
+
+    initAudioForChapter() {
+        if (this.state.chapter && this.state.chapter.verses) {
+            AudioManager.setVerses(this.state.chapter.verses);
+            this.updateAudioUI();
+        }
+    },
+
+    stopAudio() {
+        AudioManager.stop();
+        document.querySelectorAll('.verse.audio-active').forEach(el => {
+            el.classList.remove('audio-active');
+        });
     },
 
     preventTextSelection() {
@@ -159,7 +258,7 @@ const App = {
         const borderRadius = target.classList.contains('big-btn') ? 20 : 10;
         const stroke = 4;
         const halfStroke = stroke / 2; // Half stroke width to center stroke on edge
-        
+
         // Calculate the perimeter of the rounded rectangle
         // Perimeter = 2*(width - 2*r) + 2*(height - 2*r) + 2*π*r
         const straightWidth = width - 2 * borderRadius;
@@ -231,11 +330,12 @@ const App = {
         // Hide toolbar when leaving verse view
         if (viewId !== 'verseView') {
             this.hideToolbar();
+            this.stopAudio();
         }
 
         // Push state for browser back button (except home and when restoring from history)
         if (!skipHistory && viewId !== 'homeView') {
-            history.pushState({ 
+            history.pushState({
                 view: viewId,
                 testament: this.state.testament,
                 book: this.state.book ? { name: this.state.book.name } : null,
@@ -278,9 +378,9 @@ const App = {
 
         // Navigate to home
         this.switchView('homeView', true);
-        
+
         // Replace history state to avoid cluttering browser history
-        history.replaceState({ 
+        history.replaceState({
             view: 'homeView',
             testament: null,
             book: null,
@@ -323,7 +423,7 @@ const App = {
 
         // Restore state
         this.state.testament = state.testament || null;
-        
+
         // Restore book if we have testament
         if (state.testament && state.book) {
             const books = DataManager.getTestamentBooks(state.testament);
@@ -372,13 +472,13 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'book';
             div.data = book;
-            
+
             // Bind nimble trigger for long press navigation
-            this.bindNimbleTrigger(div, { 
-                testament: testament, 
-                book: book 
+            this.bindNimbleTrigger(div, {
+                testament: testament,
+                book: book
             });
-            
+
             this.els.bookList.appendChild(div);
         });
 
@@ -398,14 +498,14 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'chapter';
             div.data = chapter;
-            
+
             // Bind nimble trigger for long press navigation
-            this.bindNimbleTrigger(div, { 
-                testament: this.state.testament, 
-                book: book, 
-                chapter: chapter 
+            this.bindNimbleTrigger(div, {
+                testament: this.state.testament,
+                book: book,
+                chapter: chapter
             });
-            
+
             this.els.chapterList.appendChild(div);
         });
 
@@ -425,15 +525,15 @@ const App = {
             div.dataset.index = index;
             div.dataset.type = 'verse';
             div.data = verse;
-            
+
             // Bind nimble trigger for long press navigation
-            this.bindNimbleTrigger(div, { 
-                testament: this.state.testament, 
-                book: this.state.book, 
-                chapter: chapter, 
-                verse: verse.number 
+            this.bindNimbleTrigger(div, {
+                testament: this.state.testament,
+                book: this.state.book,
+                chapter: chapter,
+                verse: verse.number
             });
-            
+
             this.els.verseList.appendChild(div);
         });
 
@@ -476,6 +576,9 @@ const App = {
             const el = document.getElementById(`verse-${targetVerseNum}`);
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
+
+        // Initialize audio for this chapter
+        this.initAudioForChapter();
     },
 
     // NIMBLE NAVIGATION - Uses standard views directly
@@ -568,10 +671,10 @@ const App = {
         const progressDelayTimer = setTimeout(() => {
             this.state.nimble.progressCleanup = this.showProgress(itemEl, 400);
         }, 150);
-        
+
         // Store progress delay timer for cleanup
         this.state.nimble.progressDelayTimer = progressDelayTimer;
-        
+
         // Total hover time is still 1000ms
         this.state.nimble.timer = setTimeout(() => {
             this.handleHoverComplete(itemEl);
@@ -638,7 +741,7 @@ const App = {
             // Don't prevent default - allow scrolling
             hasMoved = false;
             isLongPress = false;
-            
+
             // Get starting position
             if (e.touches && e.touches.length > 0) {
                 startX = e.touches[0].clientX;
@@ -672,7 +775,7 @@ const App = {
 
             const deltaX = Math.abs(currentX - startX);
             const deltaY = Math.abs(currentY - startY);
-            
+
             // If moved more than 10px, consider it scrolling
             if (deltaX > 10 || deltaY > 10) {
                 hasMoved = true;
@@ -682,14 +785,14 @@ const App = {
 
         const handleEnd = (e) => {
             clearTimeout(pressTimer);
-            
+
             // Only handle single tap if there was no movement and no long press occurred
             if (!hasMoved && !isLongPress) {
                 e.preventDefault();
                 e.stopPropagation();
                 this.handleVerseSingleTap(verseEl, verse);
             }
-            
+
             // Reset flags for next interaction
             isLongPress = false;
             hasMoved = false;
@@ -826,7 +929,7 @@ const App = {
                 textToCopy = `${this.state.book.name} ${this.state.chapter.number}:${verse.number} ${verse.text}`;
             }
         } else if (selection.rangeStart !== null && selection.rangeEnd !== null) {
-            const verses = this.state.chapter.verses.filter(v => 
+            const verses = this.state.chapter.verses.filter(v =>
                 v.number >= selection.rangeStart && v.number <= selection.rangeEnd
             );
             if (verses.length > 0) {

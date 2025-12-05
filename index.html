@@ -8,18 +8,18 @@
     <title>NimbleBible</title>
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="css/style.css">
-    
+
     <!-- PWA Meta Tags -->
     <meta name="theme-color" content="#121212">
     <meta name="description" content="Fast, frictionless Bible navigation">
     <meta name="mobile-web-app-capable" content="yes">
-    
+
     <!-- Apple iOS Meta Tags -->
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="NimbleBible">
     <link rel="apple-touch-icon" href="./icons/icon-192.png">
-    
+
     <!-- Microsoft Tiles -->
     <meta name="msapplication-TileColor" content="#121212">
     <meta name="msapplication-TileImage" content="./icons/icon-192.png">
@@ -70,10 +70,31 @@
             <div id="verse-toolbar" class="verse-toolbar">
                 <button id="copy-verse-btn" class="verse-toolbar-btn">Copy</button>
             </div>
+
+            <!-- Audio Toolbar -->
+            <div id="audio-toolbar" class="audio-toolbar">
+                <button id="audio-play-btn" class="audio-btn" aria-label="Play/Pause">
+                    <svg class="play-icon" viewBox="0 0 24 24" width="24" height="24">
+                        <polygon points="5,3 19,12 5,21" fill="currentColor" />
+                    </svg>
+                    <svg class="pause-icon" viewBox="0 0 24 24" width="24" height="24" style="display:none;">
+                        <rect x="5" y="3" width="4" height="18" fill="currentColor" />
+                        <rect x="15" y="3" width="4" height="18" fill="currentColor" />
+                    </svg>
+                </button>
+                <div class="audio-scrubber">
+                    <div class="scrubber-track">
+                        <div class="scrubber-progress" id="scrubber-progress"></div>
+                        <input type="range" id="audio-range" min="0" max="100" value="0" step="1">
+                    </div>
+                    <span class="audio-time" id="audio-time">Verse 1 of 1</span>
+                </div>
+            </div>
         </div>
     </div>
 
     <script src="js/data.js"></script>
+    <script src="js/audio.js"></script>
     <script src="js/app.js"></script>
     <script>
         // Register Service Worker
@@ -82,7 +103,7 @@
                 navigator.serviceWorker.register('./sw.js')
                     .then((registration) => {
                         console.log('SW registered:', registration);
-                        
+
                         // Check for updates periodically
                         setInterval(() => {
                             registration.update();
@@ -93,13 +114,13 @@
                     });
             });
         }
-        
+
         // Handle PWA install prompt (allow native Chrome prompt)
         window.addEventListener('beforeinstallprompt', (e) => {
             console.log('PWA install prompt available');
             // Don't prevent default - let Chrome show its native install UI
         });
-        
+
         // Track if app is installed
         window.addEventListener('appinstalled', () => {
             console.log('PWA installed successfully');
