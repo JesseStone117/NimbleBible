@@ -823,7 +823,10 @@ const App = {
             }
 
             if (newDirection !== 0 && this.state.nimbleScrollDirection === 0) {
-                // Start scrolling
+                // Start scrolling - cancel any hover state and remove visual highlight
+                this.cancelHover();
+                document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('.big-btn.active').forEach(el => el.classList.remove('active'));
                 this.state.nimbleScrollDirection = newDirection;
                 this.startNimbleScroll(activeList);
             } else if (newDirection === 0 && this.state.nimbleScrollDirection !== 0) {
@@ -833,6 +836,11 @@ const App = {
                 // Update direction/speed
                 this.state.nimbleScrollDirection = newDirection;
             }
+        }
+
+        // Skip element detection while scrolling
+        if (this.state.nimbleScrollDirection !== 0) {
+            return;
         }
 
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -947,7 +955,7 @@ const App = {
     },
 
     startNimbleScroll(list) {
-        const baseSpeed = 6; // pixels per frame at max speed
+        const baseSpeed = 15; // pixels per frame at max speed
 
         const scroll = () => {
             if (this.state.nimbleScrollDirection === 0) {
