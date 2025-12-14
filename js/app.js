@@ -1268,6 +1268,7 @@ const App = {
                 testament: this.state.testament,
                 bookName: this.state.book?.name || null,
                 chapterNumber: this.state.chapter?.number || null,
+                verseNumber: this.state.targetVerseNum || null,
                 scrollPosition: 0
             };
             this.state.tabs.push(initialTab);
