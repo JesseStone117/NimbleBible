@@ -164,8 +164,8 @@ const App = {
                 this.createNewTab();
             });
 
-            // Long press for nimble navigation
-            this.bindNimbleTrigger(this.els.newTabBtn, { fromNewTab: true });
+            // Long press for nimble navigation (skip progress to avoid toolbar visual glitch)
+            this.bindNimbleTrigger(this.els.newTabBtn, { fromNewTab: true }, { skipProgress: true });
         }
 
         // Audio controls
@@ -305,14 +305,37 @@ const App = {
         });
     },
 
-    bindNimbleTrigger(element, context) {
+    bindNimbleTrigger(element, context, options = {}) {
         let pressTimer, progressCleanup;
+        let hasMoved = false;
+        let startX = 0, startY = 0;
 
-        const start = () => {
-            progressCleanup = this.showProgress(element, 500);
+        const start = (e) => {
+            hasMoved = false;
+            if (e.touches && e.touches.length > 0) {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }
+
+            // Skip progress indicator if specified (e.g., for new tab button)
+            if (!options.skipProgress) {
+                progressCleanup = this.showProgress(element, 500);
+            }
             pressTimer = setTimeout(() => {
-                this.startNimbleMode(context);
+                if (!hasMoved) {
+                    this.startNimbleMode(context);
+                }
             }, 500);
+        };
+
+        const move = (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const deltaX = Math.abs(e.touches[0].clientX - startX);
+            const deltaY = Math.abs(e.touches[0].clientY - startY);
+            if (deltaX > 10 || deltaY > 10) {
+                hasMoved = true;
+                cancel();
+            }
         };
 
         const cancel = () => {
@@ -321,10 +344,52 @@ const App = {
         };
 
         element.addEventListener('touchstart', start, { passive: true });
+        element.addEventListener('touchmove', move, { passive: true });
         element.addEventListener('touchend', cancel);
         element.addEventListener('mousedown', start);
         element.addEventListener('mouseup', cancel);
         element.addEventListener('mouseleave', cancel);
+    },
+
+    // Scroll-aware tap handler to prevent accidental navigation while scrolling
+    bindScrollAwareTap(element, callback) {
+        let startX = 0, startY = 0;
+        let hasMoved = false;
+
+        const touchStart = (e) => {
+            hasMoved = false;
+            if (e.touches && e.touches.length > 0) {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            }
+        };
+
+        const touchMove = (e) => {
+            if (!e.touches || e.touches.length === 0) return;
+            const deltaX = Math.abs(e.touches[0].clientX - startX);
+            const deltaY = Math.abs(e.touches[0].clientY - startY);
+            if (deltaX > 10 || deltaY > 10) {
+                hasMoved = true;
+            }
+        };
+
+        const touchEnd = (e) => {
+            if (!hasMoved) {
+                callback();
+            }
+        };
+
+        element.addEventListener('touchstart', touchStart, { passive: true });
+        element.addEventListener('touchmove', touchMove, { passive: true });
+        element.addEventListener('touchend', touchEnd);
+
+        // Keep click for mouse users
+        element.addEventListener('click', (e) => {
+            // Only trigger if not a touch event
+            if (e.pointerType !== 'touch') {
+                callback();
+            }
+        });
     },
 
     showProgress(target, duration) {
@@ -548,7 +613,7 @@ const App = {
             const div = document.createElement('div');
             div.className = 'grid-item';
             div.textContent = book.name;
-            div.onclick = () => this.openChapterList(book);
+            this.bindScrollAwareTap(div, () => this.openChapterList(book));
             div.dataset.index = index;
             div.dataset.type = 'book';
             div.data = book;
@@ -574,7 +639,7 @@ const App = {
             const div = document.createElement('div');
             div.className = 'grid-item';
             div.textContent = `ch. ${chapter.number}`;
-            div.onclick = () => this.openVerseList(chapter);
+            this.bindScrollAwareTap(div, () => this.openVerseList(chapter));
             div.dataset.index = index;
             div.dataset.type = 'chapter';
             div.data = chapter;
@@ -601,7 +666,7 @@ const App = {
             const div = document.createElement('div');
             div.className = 'grid-item';
             div.textContent = `v. ${verse.number}`;
-            div.onclick = () => this.openVerseView(chapter, verse.number);
+            this.bindScrollAwareTap(div, () => this.openVerseView(chapter, verse.number));
             div.dataset.index = index;
             div.dataset.type = 'verse';
             div.data = verse;

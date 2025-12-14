@@ -103,7 +103,7 @@ body {
     background-color: var(--highlight-bg);
 }
 
-/* Headers */
+/* Header - sticky so always visible */
 .header {
     display: flex;
     align-items: center;
@@ -116,6 +116,9 @@ body {
     max-width: 100%;
     box-sizing: border-box;
     overflow: hidden;
+    position: sticky;
+    top: 0;
+    z-index: 100;
 }
 
 /* Ensure headers are always visible for non-home views */
@@ -162,7 +165,6 @@ h1 {
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     padding: 20px;
-    padding-top: 40vh;
     padding-bottom: 40vh;
     overflow-y: auto;
     overflow-x: hidden;
