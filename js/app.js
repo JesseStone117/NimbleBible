@@ -157,11 +157,15 @@ const App = {
             });
         }
 
-        // New tab button handler
+        // New tab button - tap creates tab, long press starts nimble nav
         if (this.els.newTabBtn) {
+            // Tap handler
             this.els.newTabBtn.addEventListener('click', () => {
                 this.createNewTab();
             });
+
+            // Long press for nimble navigation
+            this.bindNimbleTrigger(this.els.newTabBtn, { fromNewTab: true });
         }
 
         // Audio controls
@@ -618,6 +622,7 @@ const App = {
 
     openVerseView(chapter, targetVerseNum = 1, skipHistory = false) {
         this.state.chapter = chapter;
+        this.state.targetVerseNum = targetVerseNum; // Track for tab labels
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
         // Reset verse selection
@@ -636,8 +641,14 @@ const App = {
             p.dataset.verseNumber = verse.number;
             p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
 
-            if (verse.number === targetVerseNum) {
-                p.style.backgroundColor = 'rgba(59, 130, 246, 0.2)';
+            if (verse.number === targetVerseNum && targetVerseNum !== 1) {
+                // Use nimble target styling for navigated-to verses (not default verse 1)
+                p.classList.add('nimble-target');
+                // After animation completes, switch to visited state with just the stripe
+                setTimeout(() => {
+                    p.classList.remove('nimble-target');
+                    p.classList.add('nimble-target-visited');
+                }, 1000);
             }
 
             // Add verse selection handlers
@@ -665,6 +676,16 @@ const App = {
         if (this.state.nimble.active) return;
 
         this.state.nimble.active = true;
+
+        // If starting from new tab button, create tab first then go to home
+        if (context.fromNewTab) {
+            this.createNewTab();
+            // Now start nimble from home with no preset testament
+            // User needs to pick OT or NT first, but we're already on home
+            // The nimble mode is now active and will respond to touch moves
+            if (navigator.vibrate) navigator.vibrate(50);
+            return;
+        }
 
         // Determine starting view based on context
         if (context.testament && !context.book) {
@@ -703,7 +724,7 @@ const App = {
 
         const touch = e.touches[0];
 
-        // Auto-scroll logic
+        // Auto-scroll logic for grid lists
         const activeList = document.querySelector('.view.active .grid-list');
         if (activeList) {
             const listRect = activeList.getBoundingClientRect();
@@ -718,13 +739,22 @@ const App = {
         }
 
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
+
+        // Check for grid items (book/chapter/verse lists)
         let itemEl = target?.closest('.grid-item');
+
+        // Also check for home view big buttons (OT/NT)
+        if (!itemEl) {
+            itemEl = target?.closest('.big-btn');
+        }
+
         if (!itemEl) {
             if (this.state.nimble.currentItem) this.cancelHover();
             return;
         }
 
-        const activeView = document.querySelector('.view.active .grid-list');
+        // Verify the element is in the active view
+        const activeView = document.querySelector('.view.active');
         if (!activeView?.contains(itemEl)) return;
 
         if (this.state.nimble.currentItem !== itemEl) {
@@ -736,10 +766,14 @@ const App = {
     highlightItem(itemEl) {
         this.cancelHover();
 
+        // Clear active state from grid items
         const activeList = document.querySelector('.view.active .grid-list');
         if (activeList) {
             activeList.querySelectorAll('.grid-item').forEach(el => el.classList.remove('active'));
         }
+
+        // Clear active state from big buttons (home view)
+        document.querySelectorAll('.big-btn.active').forEach(el => el.classList.remove('active'));
 
         itemEl.classList.add('active');
         this.state.nimble.currentItem = itemEl;
@@ -791,7 +825,13 @@ const App = {
         const type = itemEl.dataset.type;
         const data = itemEl.data;
 
-        if (type === 'book') {
+        // Handle home view big buttons (OT/NT)
+        if (itemEl.classList.contains('big-btn')) {
+            const testament = itemEl.dataset.testament;
+            if (testament) {
+                this.openBookList(testament);
+            }
+        } else if (type === 'book') {
             this.openChapterList(data);
         } else if (type === 'chapter') {
             this.openVerseList(data);
@@ -807,6 +847,7 @@ const App = {
         this.state.nimble.active = false;
         this.cancelHover();
         document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.big-btn.active').forEach(el => el.classList.remove('active'));
     },
 
     bindVerseSelection(verseEl, verse) {
@@ -1049,7 +1090,11 @@ const App = {
         if (!tab.bookName || !tab.chapterNumber) {
             return 'Home';
         }
-        return `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
+        let label = `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
+        if (tab.verseNumber) {
+            label += `:${tab.verseNumber}`;
+        }
+        return label;
     },
 
     createNewTab() {
@@ -1062,6 +1107,7 @@ const App = {
             testament: null,
             bookName: null,
             chapterNumber: null,
+            verseNumber: null,
             scrollPosition: 0
         };
 
@@ -1082,6 +1128,7 @@ const App = {
         currentTab.testament = this.state.testament;
         currentTab.bookName = this.state.book?.name || null;
         currentTab.chapterNumber = this.state.chapter?.number || null;
+        currentTab.verseNumber = this.state.targetVerseNum || null;
 
         // Save scroll position if in verse view
         if (this.state.currentView === 'verseView' && this.els.verseContent) {
@@ -1175,14 +1222,51 @@ const App = {
     bindTabLongPress(tabEl, tab) {
         let pressTimer = null;
         let isLongPress = false;
+        let startX = 0;
+        let startY = 0;
+        let hasMoved = false;
 
         const startPress = (e) => {
             isLongPress = false;
+            hasMoved = false;
+
+            // Get starting position
+            if (e.touches && e.touches.length > 0) {
+                startX = e.touches[0].clientX;
+                startY = e.touches[0].clientY;
+            } else if (e.clientX !== undefined) {
+                startX = e.clientX;
+                startY = e.clientY;
+            }
+
             pressTimer = setTimeout(() => {
-                isLongPress = true;
-                e.preventDefault();
-                this.showDeleteTabConfirmation(tab);
+                if (!hasMoved) {
+                    isLongPress = true;
+                    this.showDeleteTabConfirmation(tab);
+                }
             }, 600); // 600ms for long press
+        };
+
+        const moveHandler = (e) => {
+            let currentX, currentY;
+            if (e.touches && e.touches.length > 0) {
+                currentX = e.touches[0].clientX;
+                currentY = e.touches[0].clientY;
+            } else if (e.clientX !== undefined) {
+                currentX = e.clientX;
+                currentY = e.clientY;
+            } else {
+                return;
+            }
+
+            const deltaX = Math.abs(currentX - startX);
+            const deltaY = Math.abs(currentY - startY);
+
+            // If moved more than 10px, consider it scrolling/swiping
+            if (deltaX > 10 || deltaY > 10) {
+                hasMoved = true;
+                clearTimeout(pressTimer);
+            }
         };
 
         const endPress = (e) => {
@@ -1195,12 +1279,15 @@ const App = {
 
         const cancelPress = () => {
             clearTimeout(pressTimer);
+            hasMoved = false;
         };
 
         tabEl.addEventListener('touchstart', startPress, { passive: true });
+        tabEl.addEventListener('touchmove', moveHandler, { passive: true });
         tabEl.addEventListener('touchend', endPress, { passive: false });
         tabEl.addEventListener('touchcancel', cancelPress);
         tabEl.addEventListener('mousedown', startPress);
+        tabEl.addEventListener('mousemove', moveHandler);
         tabEl.addEventListener('mouseup', endPress);
         tabEl.addEventListener('mouseleave', cancelPress);
     },
