@@ -1159,9 +1159,143 @@ const App = {
             const tabEl = document.createElement('button');
             tabEl.className = 'tab-item' + (tab.id === this.state.activeTabId ? ' active' : '');
             tabEl.textContent = this.getTabLabel(tab);
+
+            // Single tap to switch
             tabEl.addEventListener('click', () => this.switchTab(tab.id));
+
+            // Long press to delete
+            this.bindTabLongPress(tabEl, tab);
+
             this.els.tabsContainer.appendChild(tabEl);
         });
+
+        this.updateTabsBarVisibility();
+    },
+
+    bindTabLongPress(tabEl, tab) {
+        let pressTimer = null;
+        let isLongPress = false;
+
+        const startPress = (e) => {
+            isLongPress = false;
+            pressTimer = setTimeout(() => {
+                isLongPress = true;
+                e.preventDefault();
+                this.showDeleteTabConfirmation(tab);
+            }, 600); // 600ms for long press
+        };
+
+        const endPress = (e) => {
+            clearTimeout(pressTimer);
+            if (isLongPress) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        const cancelPress = () => {
+            clearTimeout(pressTimer);
+        };
+
+        tabEl.addEventListener('touchstart', startPress, { passive: true });
+        tabEl.addEventListener('touchend', endPress, { passive: false });
+        tabEl.addEventListener('touchcancel', cancelPress);
+        tabEl.addEventListener('mousedown', startPress);
+        tabEl.addEventListener('mouseup', endPress);
+        tabEl.addEventListener('mouseleave', cancelPress);
+    },
+
+    showDeleteTabConfirmation(tab) {
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'delete-tab-overlay';
+        overlay.innerHTML = `
+            <div class="delete-tab-popup">
+                <p>Delete tab "${this.getTabLabel(tab)}"?</p>
+                <div class="delete-tab-buttons">
+                    <button class="delete-tab-cancel">Cancel</button>
+                    <button class="delete-tab-confirm">Delete</button>
+                </div>
+            </div>
+        `;
+
+        // Cancel button
+        overlay.querySelector('.delete-tab-cancel').addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
+
+        // Delete button
+        overlay.querySelector('.delete-tab-confirm').addEventListener('click', () => {
+            this.deleteTab(tab.id);
+            document.body.removeChild(overlay);
+        });
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+            }
+        });
+
+        document.body.appendChild(overlay);
+    },
+
+    deleteTab(tabId) {
+        const tabIndex = this.state.tabs.findIndex(t => t.id === tabId);
+        if (tabIndex === -1) return;
+
+        // Can't delete the last tab - just reset it instead
+        if (this.state.tabs.length === 1) {
+            this.state.tabs[0] = {
+                id: this.state.nextTabId++,
+                testament: null,
+                bookName: null,
+                chapterNumber: null,
+                scrollPosition: 0
+            };
+            this.state.activeTabId = this.state.tabs[0].id;
+            this.goHome();
+            this.renderTabs();
+            return;
+        }
+
+        // Remove the tab
+        this.state.tabs.splice(tabIndex, 1);
+
+        // If deleted tab was active, switch to another
+        if (this.state.activeTabId === tabId) {
+            const newActiveIndex = Math.min(tabIndex, this.state.tabs.length - 1);
+            const newActiveTab = this.state.tabs[newActiveIndex];
+            this.state.activeTabId = newActiveTab.id;
+
+            // Navigate to the new active tab's content
+            if (newActiveTab.bookName && newActiveTab.chapterNumber) {
+                this.state.testament = newActiveTab.testament;
+                const books = DataManager.getTestamentBooks(newActiveTab.testament);
+                const book = books.find(b => b.name === newActiveTab.bookName);
+                if (book) {
+                    this.state.book = book;
+                    const chapter = book.chapters.find(c => c.number === newActiveTab.chapterNumber);
+                    if (chapter) {
+                        this.openVerseView(chapter, 1, true);
+                    }
+                }
+            } else {
+                this.goHome();
+            }
+        }
+
+        this.renderTabs();
+    },
+
+    updateTabsBarVisibility() {
+        if (!this.els.tabsBar) return;
+
+        if (this.state.tabs.length > 0) {
+            this.els.tabsBar.classList.remove('hidden');
+        } else {
+            this.els.tabsBar.classList.add('hidden');
+        }
     }
 };
 
