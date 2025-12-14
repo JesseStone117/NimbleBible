@@ -740,6 +740,12 @@ const App = {
 
         const target = document.elementFromPoint(touch.clientX, touch.clientY);
 
+        // Exclude toolbar and tabs bar from nimble navigation
+        if (target?.closest('.audio-toolbar') || target?.closest('.tabs-bar')) {
+            if (this.state.nimble.currentItem) this.cancelHover();
+            return;
+        }
+
         // Check for grid items (book/chapter/verse lists)
         let itemEl = target?.closest('.grid-item');
 
@@ -1100,6 +1106,16 @@ const App = {
     createNewTab() {
         // Save current tab state before creating new one
         this.saveCurrentTabState();
+
+        // Check if there's already a home tab (a tab with no book/chapter)
+        const existingHomeTab = this.state.tabs.find(t => !t.bookName && !t.chapterNumber);
+        if (existingHomeTab) {
+            // Reuse existing home tab
+            this.state.activeTabId = existingHomeTab.id;
+            this.goHome();
+            this.renderTabs();
+            return;
+        }
 
         // Create new tab
         const newTab = {

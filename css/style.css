@@ -682,6 +682,15 @@ h1 {
     display: flex;
 }
 
+/* Hide new tab button by default, show only on verse view */
+.new-tab-btn {
+    display: none;
+}
+
+#app[data-current-view="verseView"] .new-tab-btn {
+    display: flex;
+}
+
 /* Delete Tab Confirmation Popup */
 .delete-tab-overlay {
     position: fixed;
