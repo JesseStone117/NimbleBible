@@ -55,6 +55,20 @@ const App = {
         this.bindEvents();
         this.setupHistory();
         this.renderHome();
+
+        // Create initial Home tab
+        if (this.state.tabs.length === 0) {
+            this.state.tabs.push({
+                id: this.state.nextTabId++,
+                testament: null,
+                bookName: null,
+                chapterNumber: null,
+                verseNumber: null,
+                scrollPosition: 0
+            });
+            this.state.activeTabId = this.state.tabs[0].id;
+            this.renderTabs();
+        }
     },
 
     setupHistory() {
