@@ -20,7 +20,10 @@ const App = {
         tabs: [],
         activeTabId: null,
         nextTabId: 1,
-        toolbarExpanded: false
+        toolbarExpanded: false,
+        // Nimble scroll state for smooth scrolling
+        nimbleScrollDirection: 0,
+        nimbleScrollAnimationId: null
     },
 
     // Book abbreviations for tabs
@@ -29,8 +32,8 @@ const App = {
         'Deuteronomy': 'DEU', 'Joshua': 'JOS', 'Judges': 'JDG', 'Ruth': 'RUT',
         '1 Samuel': '1SA', '2 Samuel': '2SA', '1 Kings': '1KI', '2 Kings': '2KI',
         '1 Chronicles': '1CH', '2 Chronicles': '2CH', 'Ezra': 'EZR', 'Nehemiah': 'NEH',
-        'Esther': 'EST', 'Job': 'JOB', 'Psalms': 'PSA', 'Proverbs': 'PRO',
-        'Ecclesiastes': 'ECC', 'Song of Solomon': 'SOS', 'Isaiah': 'ISA', 'Jeremiah': 'JER',
+        'Esther': 'EST', 'Job': 'JOB', 'Psalm': 'PSA', 'Proverbs': 'PRO',
+        'Ecclesiastes': 'ECC', 'Song Of Solomon': 'SOS', 'Isaiah': 'ISA', 'Jeremiah': 'JER',
         'Lamentations': 'LAM', 'Ezekiel': 'EZE', 'Daniel': 'DAN', 'Hosea': 'HOS',
         'Joel': 'JOE', 'Amos': 'AMO', 'Obadiah': 'OBA', 'Jonah': 'JON',
         'Micah': 'MIC', 'Nahum': 'NAH', 'Habakkuk': 'HAB', 'Zephaniah': 'ZEP',
@@ -803,17 +806,32 @@ const App = {
 
         const touch = e.touches[0];
 
-        // Auto-scroll logic for grid lists
+        // Auto-scroll logic using requestAnimationFrame for smooth scrolling
         const activeList = document.querySelector('.view.active .grid-list');
         if (activeList) {
             const listRect = activeList.getBoundingClientRect();
             const scrollThreshold = 80;
-            const scrollSpeed = 8;
 
+            let newDirection = 0;
             if (touch.clientY > listRect.bottom - scrollThreshold) {
-                activeList.scrollTop += scrollSpeed;
+                // Calculate speed based on how far into the threshold (faster at edge)
+                const depth = (touch.clientY - (listRect.bottom - scrollThreshold)) / scrollThreshold;
+                newDirection = Math.min(1, depth); // 0 to 1
             } else if (touch.clientY < listRect.top + scrollThreshold) {
-                activeList.scrollTop -= scrollSpeed;
+                const depth = ((listRect.top + scrollThreshold) - touch.clientY) / scrollThreshold;
+                newDirection = -Math.min(1, depth); // -1 to 0
+            }
+
+            if (newDirection !== 0 && this.state.nimbleScrollDirection === 0) {
+                // Start scrolling
+                this.state.nimbleScrollDirection = newDirection;
+                this.startNimbleScroll(activeList);
+            } else if (newDirection === 0 && this.state.nimbleScrollDirection !== 0) {
+                // Stop scrolling
+                this.stopNimbleScroll();
+            } else {
+                // Update direction/speed
+                this.state.nimbleScrollDirection = newDirection;
             }
         }
 
@@ -928,9 +946,39 @@ const App = {
         this.state.nimble.currentItem = null;
     },
 
+    startNimbleScroll(list) {
+        const baseSpeed = 6; // pixels per frame at max speed
+
+        const scroll = () => {
+            if (this.state.nimbleScrollDirection === 0) {
+                this.state.nimbleScrollAnimationId = null;
+                return;
+            }
+
+            // Speed is proportional to how far into the threshold zone
+            const speed = baseSpeed * Math.abs(this.state.nimbleScrollDirection);
+            list.scrollTop += speed * Math.sign(this.state.nimbleScrollDirection);
+
+            this.state.nimbleScrollAnimationId = requestAnimationFrame(scroll);
+        };
+
+        if (!this.state.nimbleScrollAnimationId) {
+            this.state.nimbleScrollAnimationId = requestAnimationFrame(scroll);
+        }
+    },
+
+    stopNimbleScroll() {
+        this.state.nimbleScrollDirection = 0;
+        if (this.state.nimbleScrollAnimationId) {
+            cancelAnimationFrame(this.state.nimbleScrollAnimationId);
+            this.state.nimbleScrollAnimationId = null;
+        }
+    },
+
     endNimbleMode() {
         this.state.nimble.active = false;
         this.cancelHover();
+        this.stopNimbleScroll();
         document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
         document.querySelectorAll('.big-btn.active').forEach(el => el.classList.remove('active'));
     },
