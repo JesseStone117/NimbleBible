@@ -1241,7 +1241,7 @@ const App = {
                 this.state.book = book;
                 const chapter = book.chapters.find(c => c.number === tab.chapterNumber);
                 if (chapter) {
-                    this.openVerseView(chapter, 1, true);
+                    this.openVerseView(chapter, tab.verseNumber || 1, true);
 
                     // Restore scroll position
                     if (tab.scrollPosition && this.els.verseContent) {
