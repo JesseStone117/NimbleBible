@@ -15,7 +15,33 @@ const App = {
             singleSelected: null,
             rangeStart: null,
             rangeEnd: null
-        }
+        },
+        // Tabs state
+        tabs: [],
+        activeTabId: null,
+        nextTabId: 1,
+        toolbarExpanded: false
+    },
+
+    // Book abbreviations for tabs
+    bookAbbreviations: {
+        'Genesis': 'GEN', 'Exodus': 'EXO', 'Leviticus': 'LEV', 'Numbers': 'NUM',
+        'Deuteronomy': 'DEU', 'Joshua': 'JOS', 'Judges': 'JDG', 'Ruth': 'RUT',
+        '1 Samuel': '1SA', '2 Samuel': '2SA', '1 Kings': '1KI', '2 Kings': '2KI',
+        '1 Chronicles': '1CH', '2 Chronicles': '2CH', 'Ezra': 'EZR', 'Nehemiah': 'NEH',
+        'Esther': 'EST', 'Job': 'JOB', 'Psalms': 'PSA', 'Proverbs': 'PRO',
+        'Ecclesiastes': 'ECC', 'Song of Solomon': 'SOS', 'Isaiah': 'ISA', 'Jeremiah': 'JER',
+        'Lamentations': 'LAM', 'Ezekiel': 'EZE', 'Daniel': 'DAN', 'Hosea': 'HOS',
+        'Joel': 'JOE', 'Amos': 'AMO', 'Obadiah': 'OBA', 'Jonah': 'JON',
+        'Micah': 'MIC', 'Nahum': 'NAH', 'Habakkuk': 'HAB', 'Zephaniah': 'ZEP',
+        'Haggai': 'HAG', 'Zechariah': 'ZEC', 'Malachi': 'MAL',
+        'Matthew': 'MAT', 'Mark': 'MAR', 'Luke': 'LUK', 'John': 'JON',
+        'Acts': 'ACT', 'Romans': 'ROM', '1 Corinthians': '1CO', '2 Corinthians': '2CO',
+        'Galatians': 'GAL', 'Ephesians': 'EPH', 'Philippians': 'PHP', 'Colossians': 'COL',
+        '1 Thessalonians': '1TH', '2 Thessalonians': '2TH', '1 Timothy': '1TI', '2 Timothy': '2TI',
+        'Titus': 'TIT', 'Philemon': 'PHM', 'Hebrews': 'HEB', 'James': 'JAM',
+        '1 Peter': '1PE', '2 Peter': '2PE', '1 John': '1JO', '2 John': '2JO',
+        '3 John': '3JO', 'Jude': 'JUD', 'Revelation': 'REV'
     },
 
     async init() {
@@ -59,7 +85,6 @@ const App = {
             chapterList: document.getElementById('chapter-list'),
             verseList: document.getElementById('verse-list'),
             verseContent: document.getElementById('verse-content'),
-            verseToolbar: document.getElementById('verse-toolbar'),
             copyVerseBtn: document.getElementById('copy-verse-btn'),
 
             testamentTitle: document.getElementById('testament-title'),
@@ -70,12 +95,18 @@ const App = {
             btnOT: document.getElementById('btn-ot'),
             btnNT: document.getElementById('btn-nt'),
 
-            // Audio elements
+            // Toolbar elements
             audioToolbar: document.getElementById('audio-toolbar'),
+            toolbarToggleBtn: document.getElementById('toolbar-toggle-btn'),
             audioPlayBtn: document.getElementById('audio-play-btn'),
             audioRange: document.getElementById('audio-range'),
             scrubberProgress: document.getElementById('scrubber-progress'),
-            audioTime: document.getElementById('audio-time')
+            audioTime: document.getElementById('audio-time'),
+
+            // Tabs elements
+            tabsBar: document.getElementById('tabs-bar'),
+            tabsContainer: document.getElementById('tabs-container'),
+            newTabBtn: document.getElementById('new-tab-btn')
         };
     },
 
@@ -110,15 +141,57 @@ const App = {
         // Prevent text selection globally
         this.preventTextSelection();
 
-        // Copy button handler
+        // Toolbar toggle handler
+        if (this.els.toolbarToggleBtn) {
+            this.els.toolbarToggleBtn.addEventListener('click', () => {
+                this.toggleToolbar();
+            });
+        }
+
+        // Copy button handler (with disabled check)
         if (this.els.copyVerseBtn) {
             this.els.copyVerseBtn.addEventListener('click', () => {
-                this.copySelectedVerses();
+                if (!this.els.copyVerseBtn.classList.contains('disabled')) {
+                    this.copySelectedVerses();
+                }
+            });
+        }
+
+        // New tab button handler
+        if (this.els.newTabBtn) {
+            this.els.newTabBtn.addEventListener('click', () => {
+                this.createNewTab();
             });
         }
 
         // Audio controls
         this.bindAudioControls();
+    },
+
+    // Toolbar expand/collapse
+    toggleToolbar() {
+        this.state.toolbarExpanded = !this.state.toolbarExpanded;
+        if (this.els.audioToolbar) {
+            if (this.state.toolbarExpanded) {
+                this.els.audioToolbar.classList.remove('minimized');
+            } else {
+                this.els.audioToolbar.classList.add('minimized');
+            }
+        }
+    },
+
+    // Update copy button disabled state
+    updateCopyButtonState() {
+        if (!this.els.copyVerseBtn) return;
+
+        const hasSelection = this.state.verseSelection.singleSelected !== null ||
+            (this.state.verseSelection.rangeStart !== null && this.state.verseSelection.rangeEnd !== null);
+
+        if (hasSelection) {
+            this.els.copyVerseBtn.classList.remove('disabled');
+        } else {
+            this.els.copyVerseBtn.classList.add('disabled');
+        }
     },
 
     bindAudioControls() {
@@ -318,6 +391,9 @@ const App = {
         this.els[viewId].classList.remove('hidden');
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
+
+        // Set data attribute for CSS-based toolbar/tabs visibility
+        this.els.app.setAttribute('data-current-view', viewId);
 
         // Ensure headers are always visible for non-home views (CSS handles this, but explicit check)
         if (viewId !== 'homeView') {
@@ -579,6 +655,9 @@ const App = {
 
         // Initialize audio for this chapter
         this.initAudioForChapter();
+
+        // Update tab state
+        this.updateCurrentTabFromNavigation();
     },
 
     // NIMBLE NAVIGATION - Uses standard views directly
@@ -908,15 +987,13 @@ const App = {
     },
 
     showToolbar() {
-        if (this.els.verseToolbar) {
-            this.els.verseToolbar.classList.add('visible');
-        }
+        // Update copy button state when showing toolbar context
+        this.updateCopyButtonState();
     },
 
     hideToolbar() {
-        if (this.els.verseToolbar) {
-            this.els.verseToolbar.classList.remove('visible');
-        }
+        // Update copy button state (will disable it)
+        this.updateCopyButtonState();
     },
 
     copySelectedVerses() {
@@ -960,6 +1037,131 @@ const App = {
                 document.body.removeChild(textArea);
             }
         }
+    },
+
+    // === TAB MANAGEMENT ===
+
+    getBookAbbreviation(bookName) {
+        return this.bookAbbreviations[bookName] || bookName.substring(0, 3).toUpperCase();
+    },
+
+    getTabLabel(tab) {
+        if (!tab.bookName || !tab.chapterNumber) {
+            return 'Home';
+        }
+        return `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
+    },
+
+    createNewTab() {
+        // Save current tab state before creating new one
+        this.saveCurrentTabState();
+
+        // Create new tab
+        const newTab = {
+            id: this.state.nextTabId++,
+            testament: null,
+            bookName: null,
+            chapterNumber: null,
+            scrollPosition: 0
+        };
+
+        this.state.tabs.push(newTab);
+        this.state.activeTabId = newTab.id;
+
+        // Navigate to home
+        this.goHome();
+        this.renderTabs();
+    },
+
+    saveCurrentTabState() {
+        if (this.state.activeTabId === null) return;
+
+        const currentTab = this.state.tabs.find(t => t.id === this.state.activeTabId);
+        if (!currentTab) return;
+
+        currentTab.testament = this.state.testament;
+        currentTab.bookName = this.state.book?.name || null;
+        currentTab.chapterNumber = this.state.chapter?.number || null;
+
+        // Save scroll position if in verse view
+        if (this.state.currentView === 'verseView' && this.els.verseContent) {
+            currentTab.scrollPosition = this.els.verseContent.scrollTop;
+        }
+    },
+
+    switchTab(tabId) {
+        if (tabId === this.state.activeTabId) return;
+
+        // Save current tab state
+        this.saveCurrentTabState();
+
+        // Switch to new tab
+        const tab = this.state.tabs.find(t => t.id === tabId);
+        if (!tab) return;
+
+        this.state.activeTabId = tabId;
+
+        // Restore tab state
+        if (tab.bookName && tab.chapterNumber) {
+            // Need to restore the full navigation state
+            this.state.testament = tab.testament;
+
+            // Find book and chapter from the data
+            const books = DataManager.getTestamentBooks(tab.testament);
+            const book = books.find(b => b.name === tab.bookName);
+            if (book) {
+                this.state.book = book;
+                const chapter = book.chapters.find(c => c.number === tab.chapterNumber);
+                if (chapter) {
+                    this.openVerseView(chapter, 1, true);
+
+                    // Restore scroll position
+                    if (tab.scrollPosition && this.els.verseContent) {
+                        setTimeout(() => {
+                            this.els.verseContent.scrollTop = tab.scrollPosition;
+                        }, 100);
+                    }
+                }
+            }
+        } else {
+            // Tab is on home
+            this.goHome();
+        }
+
+        this.renderTabs();
+    },
+
+    updateCurrentTabFromNavigation() {
+        // Called when user navigates to update the current tab
+        if (this.state.activeTabId === null) {
+            // Create initial tab if none exists
+            const initialTab = {
+                id: this.state.nextTabId++,
+                testament: this.state.testament,
+                bookName: this.state.book?.name || null,
+                chapterNumber: this.state.chapter?.number || null,
+                scrollPosition: 0
+            };
+            this.state.tabs.push(initialTab);
+            this.state.activeTabId = initialTab.id;
+        } else {
+            this.saveCurrentTabState();
+        }
+        this.renderTabs();
+    },
+
+    renderTabs() {
+        if (!this.els.tabsContainer) return;
+
+        this.els.tabsContainer.innerHTML = '';
+
+        this.state.tabs.forEach(tab => {
+            const tabEl = document.createElement('button');
+            tabEl.className = 'tab-item' + (tab.id === this.state.activeTabId ? ' active' : '');
+            tabEl.textContent = this.getTabLabel(tab);
+            tabEl.addEventListener('click', () => this.switchTab(tab.id));
+            this.els.tabsContainer.appendChild(tabEl);
+        });
     }
 };
 

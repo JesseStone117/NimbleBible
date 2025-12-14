@@ -27,7 +27,7 @@
 </head>
 
 <body>
-    <div id="app">
+    <div id="app" data-current-view="homeView">
         <div id="home-view" class="view active">
             <button id="btn-ot" class="big-btn" data-testament="Old Testament">Old Testament</button>
             <button id="btn-nt" class="big-btn" data-testament="New Testament">New Testament</button>
@@ -67,21 +67,38 @@
                 <button class="home-btn">⌂</button>
             </div>
             <div id="verse-content"></div>
-            <div id="verse-toolbar" class="verse-toolbar">
-                <button id="copy-verse-btn" class="verse-toolbar-btn">Copy</button>
-            </div>
+        </div>
 
-            <!-- Audio Toolbar -->
-            <div id="audio-toolbar" class="audio-toolbar">
-                <button id="audio-play-btn" class="audio-btn" aria-label="Play/Pause">
-                    <svg class="play-icon" viewBox="0 0 24 24" width="24" height="24">
+        <!-- Unified Bottom Toolbar (minimized by default) -->
+        <div id="audio-toolbar" class="audio-toolbar minimized">
+            <!-- Expand/Collapse Toggle -->
+            <button id="toolbar-toggle-btn" class="toolbar-toggle-btn" aria-label="Expand toolbar">
+                <span class="toggle-arrow">^</span>
+            </button>
+
+            <!-- Toolbar Content (hidden when minimized) -->
+            <div class="toolbar-content">
+                <!-- Copy Button -->
+                <button id="copy-verse-btn" class="toolbar-btn copy-btn disabled" aria-label="Copy selected verses">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <rect x="9" y="9" width="11" height="11" rx="2" fill="none" stroke="currentColor"
+                            stroke-width="2" />
+                        <path d="M5 15V5a2 2 0 012-2h10" fill="none" stroke="currentColor" stroke-width="2" />
+                    </svg>
+                </button>
+
+                <!-- Audio Play/Pause -->
+                <button id="audio-play-btn" class="toolbar-btn audio-btn" aria-label="Play/Pause">
+                    <svg class="play-icon" viewBox="0 0 24 24" width="20" height="20">
                         <polygon points="5,3 19,12 5,21" fill="currentColor" />
                     </svg>
-                    <svg class="pause-icon" viewBox="0 0 24 24" width="24" height="24" style="display:none;">
+                    <svg class="pause-icon" viewBox="0 0 24 24" width="20" height="20" style="display:none;">
                         <rect x="5" y="3" width="4" height="18" fill="currentColor" />
                         <rect x="15" y="3" width="4" height="18" fill="currentColor" />
                     </svg>
                 </button>
+
+                <!-- Audio Scrubber -->
                 <div class="audio-scrubber">
                     <div class="scrubber-track">
                         <div class="scrubber-progress" id="scrubber-progress"></div>
@@ -90,6 +107,12 @@
                     <span class="audio-time" id="audio-time">Verse 1 of 1</span>
                 </div>
             </div>
+        </div>
+
+        <!-- Tabs Bar -->
+        <div id="tabs-bar" class="tabs-bar">
+            <div id="tabs-container" class="tabs-container"></div>
+            <button id="new-tab-btn" class="new-tab-btn" aria-label="New tab">+</button>
         </div>
     </div>
 
