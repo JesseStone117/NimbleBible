@@ -123,7 +123,13 @@ const App = {
             // Tabs elements
             tabsBar: document.getElementById('tabs-bar'),
             tabsContainer: document.getElementById('tabs-container'),
-            newTabBtn: document.getElementById('new-tab-btn')
+            newTabBtn: document.getElementById('new-tab-btn'),
+
+            // Search elements
+            searchModal: document.getElementById('search-modal'),
+            searchInput: document.getElementById('search-input'),
+            searchCloseBtn: document.getElementById('search-close-btn'),
+            searchResults: document.getElementById('search-results')
         };
     },
 
@@ -133,9 +139,9 @@ const App = {
             btn.addEventListener('click', () => this.goBack());
         });
 
-        // Home buttons
-        document.querySelectorAll('.home-btn').forEach(btn => {
-            btn.addEventListener('click', () => this.goHome());
+        // Search buttons
+        document.querySelectorAll('.search-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.openSearch());
         });
 
         // Home buttons (tap)
@@ -187,6 +193,41 @@ const App = {
 
         // Audio controls
         this.bindAudioControls();
+
+        // Toolbar swipe gesture handler
+        this.bindToolbarSwipe();
+    },
+
+    // Toolbar swipe gestures
+    bindToolbarSwipe() {
+        if (!this.els.audioToolbar) return;
+
+        let startY = 0;
+        let startTime = 0;
+
+        this.els.audioToolbar.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            startTime = Date.now();
+        }, { passive: true });
+
+        this.els.audioToolbar.addEventListener('touchend', (e) => {
+            const endY = e.changedTouches[0].clientY;
+            const deltaY = endY - startY;
+            const duration = Date.now() - startTime;
+
+            // Only register as swipe if it's quick (< 300ms) and moved enough (> 30px)
+            if (duration < 300 && Math.abs(deltaY) > 30) {
+                if (deltaY > 0 && !this.els.audioToolbar.classList.contains('minimized')) {
+                    // Swipe down - collapse
+                    this.state.toolbarExpanded = false;
+                    this.els.audioToolbar.classList.add('minimized');
+                } else if (deltaY < 0 && this.els.audioToolbar.classList.contains('minimized')) {
+                    // Swipe up - expand
+                    this.state.toolbarExpanded = true;
+                    this.els.audioToolbar.classList.remove('minimized');
+                }
+            }
+        }, { passive: true });
     },
 
     // Toolbar expand/collapse
@@ -1544,6 +1585,136 @@ const App = {
         } else {
             this.els.tabsBar.classList.add('hidden');
         }
+    },
+
+    // === SEARCH FUNCTIONALITY ===
+
+    openSearch() {
+        if (!this.els.searchModal) return;
+
+        this.els.searchModal.classList.remove('hidden');
+        this.els.searchInput.value = '';
+        this.els.searchResults.innerHTML = '';
+
+        setTimeout(() => {
+            this.els.searchInput.focus();
+        }, 100);
+
+        // Bind events if not already bound
+        if (!this.searchEventsBound) {
+            this.els.searchCloseBtn.addEventListener('click', () => this.closeSearch());
+
+            let debounceTimer;
+            this.els.searchInput.addEventListener('input', () => {
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(() => {
+                    this.performSearch(this.els.searchInput.value);
+                }, 300);
+            });
+
+            this.searchEventsBound = true;
+        }
+    },
+
+    closeSearch() {
+        if (!this.els.searchModal) return;
+        this.els.searchModal.classList.add('hidden');
+        this.els.searchInput.blur();
+    },
+
+    performSearch(query) {
+        if (!query || query.length < 2) {
+            this.els.searchResults.innerHTML = '';
+            return;
+        }
+
+        const results = [];
+        const queryLower = query.toLowerCase();
+        const maxResults = 50;
+
+        for (const book of DataManager.books) {
+            for (const chapter of book.chapters) {
+                for (const verse of chapter.verses) {
+                    if (verse.text.toLowerCase().includes(queryLower)) {
+                        results.push({
+                            book: book,
+                            chapter: chapter,
+                            verse: verse,
+                            testament: DataManager.books.indexOf(book) < 39 ? 'Old Testament' : 'New Testament'
+                        });
+                        if (results.length >= maxResults) break;
+                    }
+                }
+                if (results.length >= maxResults) break;
+            }
+            if (results.length >= maxResults) break;
+        }
+
+        this.renderSearchResults(results, query);
+    },
+
+    renderSearchResults(results, query) {
+        if (results.length === 0) {
+            this.els.searchResults.innerHTML = `<div class="search-no-results">No results found for "${query}"</div>`;
+            return;
+        }
+
+        const html = results.map(result => {
+            const ref = `${result.book.name} ${result.chapter.number}:${result.verse.number}`;
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            const highlightedText = result.verse.text.replace(regex, '<mark>$1</mark>');
+
+            return `
+                <div class="search-result-item" data-book="${result.book.name}" data-chapter="${result.chapter.number}" data-verse="${result.verse.number}" data-testament="${result.testament}">
+                    <div class="search-result-ref">${ref}</div>
+                    <div class="search-result-text">${highlightedText}</div>
+                </div>
+            `;
+        }).join('');
+
+        this.els.searchResults.innerHTML = html;
+
+        this.els.searchResults.querySelectorAll('.search-result-item').forEach(item => {
+            item.addEventListener('click', () => {
+                this.openSearchResult(
+                    item.dataset.testament,
+                    item.dataset.book,
+                    parseInt(item.dataset.chapter),
+                    parseInt(item.dataset.verse)
+                );
+            });
+        });
+    },
+
+    openSearchResult(testament, bookName, chapterNumber, verseNumber) {
+        this.closeSearch();
+        this.saveCurrentTabState();
+
+        const newTab = {
+            id: this.state.nextTabId++,
+            testament: testament,
+            bookName: bookName,
+            chapterNumber: chapterNumber,
+            verseNumber: verseNumber,
+            scrollPosition: 0
+        };
+
+        this.state.tabs.push(newTab);
+        this.state.activeTabId = newTab.id;
+
+        this.state.testament = testament;
+        const books = DataManager.getTestamentBooks(testament);
+        const book = books.find(b => b.name === bookName);
+
+        if (book) {
+            this.state.book = book;
+            const chapter = book.chapters.find(c => c.number === chapterNumber);
+            if (chapter) {
+                this.openVerseView(chapter, verseNumber, true);
+            }
+        }
+
+        this.renderTabs();
     }
 };
 
