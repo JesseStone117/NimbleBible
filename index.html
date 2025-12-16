@@ -29,8 +29,21 @@
 <body>
     <div id="app" data-current-view="homeView">
         <div id="home-view" class="view active">
-            <button id="btn-ot" class="big-btn" data-testament="Old Testament">Old Testament</button>
-            <button id="btn-nt" class="big-btn" data-testament="New Testament">New Testament</button>
+            <div class="header">
+                <button class="back-btn" style="visibility: hidden;">←</button>
+                <h1>NimbleBible</h1>
+                <button class="search-btn" aria-label="Search">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <circle cx="10" cy="10" r="7" fill="none" stroke="currentColor" stroke-width="2" />
+                        <line x1="15" y1="15" x2="21" y2="21" stroke="currentColor" stroke-width="2"
+                            stroke-linecap="round" />
+                    </svg>
+                </button>
+            </div>
+            <div class="home-content">
+                <button id="btn-ot" class="big-btn" data-testament="Old Testament">Old Testament</button>
+                <button id="btn-nt" class="big-btn" data-testament="New Testament">New Testament</button>
+            </div>
         </div>
 
         <div id="book-view" class="view hidden">

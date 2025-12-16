@@ -204,11 +204,20 @@ const App = {
 
         let startY = 0;
         let startTime = 0;
+        let isTouchingToolbar = false;
 
         this.els.audioToolbar.addEventListener('touchstart', (e) => {
             startY = e.touches[0].clientY;
             startTime = Date.now();
+            isTouchingToolbar = true;
         }, { passive: true });
+
+        // Prevent scrolling while touching toolbar
+        this.els.audioToolbar.addEventListener('touchmove', (e) => {
+            if (isTouchingToolbar) {
+                e.preventDefault();
+            }
+        }, { passive: false });
 
         this.els.audioToolbar.addEventListener('touchend', (e) => {
             const endY = e.changedTouches[0].clientY;
@@ -227,6 +236,7 @@ const App = {
                     this.els.audioToolbar.classList.remove('minimized');
                 }
             }
+            isTouchingToolbar = false;
         }, { passive: true });
     },
 
