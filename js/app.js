@@ -23,7 +23,9 @@ const App = {
         toolbarExpanded: false,
         // Nimble scroll state for smooth scrolling
         nimbleScrollDirection: 0,
-        nimbleScrollAnimationId: null
+        nimbleScrollAnimationId: null,
+        // Navigation cooldown to prevent accidental verse selection
+        navigationCooldown: false
     },
 
     // Book abbreviations for tabs
@@ -790,6 +792,13 @@ const App = {
             this.els.verseContent.appendChild(p);
         });
 
+        // Set navigation cooldown to prevent the tap that triggered navigation
+        // from also selecting a verse in the newly rendered view
+        this.state.navigationCooldown = true;
+        setTimeout(() => {
+            this.state.navigationCooldown = false;
+        }, 150);
+
         this.switchView('verseView', skipHistory);
 
         // Only auto-scroll if not restoring tab scroll position
@@ -1102,6 +1111,13 @@ const App = {
 
         const handleEnd = (e) => {
             clearTimeout(pressTimer);
+
+            // Ignore if in navigation cooldown (prevents accidental selection when switching views)
+            if (this.state.navigationCooldown) {
+                hasMoved = false;
+                isLongPress = false;
+                return;
+            }
 
             // Only handle single tap if there was no movement and no long press occurred
             if (!hasMoved && !isLongPress) {
