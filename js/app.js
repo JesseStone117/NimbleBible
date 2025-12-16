@@ -376,7 +376,7 @@ const App = {
     },
 
     bindNimbleTrigger(element, context, options = {}) {
-        let pressTimer, progressCleanup;
+        let pressTimer, progressCleanup, progressDelayTimer;
         let hasMoved = false;
         let startX = 0, startY = 0;
 
@@ -388,8 +388,11 @@ const App = {
             }
 
             // Skip progress indicator if specified (e.g., for new tab button)
+            // Add 100ms delay before showing progress so single taps don't flash it
             if (!options.skipProgress) {
-                progressCleanup = this.showProgress(element, 500);
+                progressDelayTimer = setTimeout(() => {
+                    progressCleanup = this.showProgress(element, 400);
+                }, 100);
             }
             pressTimer = setTimeout(() => {
                 if (!hasMoved) {
@@ -410,6 +413,7 @@ const App = {
 
         const cancel = () => {
             clearTimeout(pressTimer);
+            clearTimeout(progressDelayTimer);
             if (progressCleanup) progressCleanup();
         };
 
@@ -444,6 +448,10 @@ const App = {
         };
 
         const touchEnd = (e) => {
+            // Ignore if in navigation cooldown (prevents accidental taps on new views)
+            if (this.state.navigationCooldown) {
+                return;
+            }
             if (!hasMoved) {
                 callback();
             }
@@ -523,6 +531,12 @@ const App = {
     },
 
     switchView(viewId, skipHistory = false) {
+        // Set navigation cooldown to prevent tap events from affecting the new view
+        this.state.navigationCooldown = true;
+        setTimeout(() => {
+            this.state.navigationCooldown = false;
+        }, 100);
+
         document.querySelectorAll('.view').forEach(v => {
             v.classList.add('hidden');
             v.classList.remove('active');
@@ -530,6 +544,15 @@ const App = {
         this.els[viewId].classList.remove('hidden');
         this.els[viewId].classList.add('active');
         this.state.currentView = viewId;
+
+        // Temporarily disable pointer events on grid-list to prevent CSS :active flash
+        const gridList = this.els[viewId].querySelector('.grid-list');
+        if (gridList) {
+            gridList.style.pointerEvents = 'none';
+            setTimeout(() => {
+                gridList.style.pointerEvents = '';
+            }, 100);
+        }
 
         // Set data attribute for CSS-based toolbar/tabs visibility
         this.els.app.setAttribute('data-current-view', viewId);
