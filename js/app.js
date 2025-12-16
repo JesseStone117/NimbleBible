@@ -702,7 +702,7 @@ const App = {
         this.switchView('verseListView', skipHistory);
     },
 
-    openVerseView(chapter, targetVerseNum = 1, skipHistory = false) {
+    openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll = false) {
         this.state.chapter = chapter;
         this.state.targetVerseNum = targetVerseNum; // Track for tab labels
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
@@ -741,16 +741,21 @@ const App = {
 
         this.switchView('verseView', skipHistory);
 
-        setTimeout(() => {
-            const el = document.getElementById(`verse-${targetVerseNum}`);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        }, 100);
+        // Only auto-scroll if not restoring tab scroll position
+        if (!skipAutoScroll) {
+            setTimeout(() => {
+                const el = document.getElementById(`verse-${targetVerseNum}`);
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            }, 100);
+        }
 
         // Initialize audio for this chapter
         this.initAudioForChapter();
 
-        // Update tab state
-        this.updateCurrentTabFromNavigation();
+        // Update tab state (skip if restoring from tab switch to avoid overwriting)
+        if (!skipAutoScroll) {
+            this.updateCurrentTabFromNavigation();
+        }
     },
 
     // NIMBLE NAVIGATION - Uses standard views directly
@@ -1311,13 +1316,17 @@ const App = {
                 this.state.book = book;
                 const chapter = book.chapters.find(c => c.number === tab.chapterNumber);
                 if (chapter) {
-                    this.openVerseView(chapter, tab.verseNumber || 1, true);
+                    // Pass skipAutoScroll=true to prevent auto-scroll to verse
+                    this.openVerseView(chapter, tab.verseNumber || 1, true, true);
 
-                    // Restore scroll position
-                    if (tab.scrollPosition && this.els.verseContent) {
+                    // Restore scroll position with smooth animation after view is rendered
+                    if (tab.scrollPosition !== undefined && this.els.verseContent) {
                         setTimeout(() => {
-                            this.els.verseContent.scrollTop = tab.scrollPosition;
-                        }, 100);
+                            this.els.verseContent.scrollTo({
+                                top: tab.scrollPosition,
+                                behavior: 'smooth'
+                            });
+                        }, 50);
                     }
                 }
             }
