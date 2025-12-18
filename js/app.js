@@ -87,6 +87,11 @@ const App = {
 
         // Browser back button handler
         window.addEventListener('popstate', (e) => {
+            // If search is open, close it (the 'search' state was just popped)
+            if (this.els.searchModal && this.els.searchModal.classList.contains('active')) {
+                this.closeSearch();
+                return;
+            }
             this.restoreFromHistory(e.state);
         });
     },
@@ -130,7 +135,8 @@ const App = {
             // Search elements
             searchModal: document.getElementById('search-modal'),
             searchInput: document.getElementById('search-input'),
-            searchCloseBtn: document.getElementById('search-close-btn'),
+            searchDismissBtn: document.getElementById('search-dismiss-btn'),
+            searchClearBtn: document.getElementById('search-clear-btn'),
             searchResults: document.getElementById('search-results')
         };
     },
@@ -656,8 +662,12 @@ const App = {
             this.state.book = null;
             this.state.chapter = null;
             this.switchView('homeView', true);
+            this.closeSearch();
             return;
         }
+
+        // Close search if we are navigating somewhere else
+        this.closeSearch();
 
         // Restore state
         this.state.testament = state.testament || null;
@@ -1641,20 +1651,51 @@ const App = {
     openSearch() {
         if (!this.els.searchModal) return;
 
-        this.els.searchModal.classList.remove('hidden');
+        // Reset search input and results
         this.els.searchInput.value = '';
         this.els.searchResults.innerHTML = '';
+        this.els.searchClearBtn.style.display = 'none';
+
+        // Show modal with slide-up animation
+        this.els.searchModal.classList.remove('hidden');
+        // Small delay to ensure display:flex is applied before trigger transition
+        requestAnimationFrame(() => {
+            this.els.searchModal.classList.add('active');
+        });
 
         setTimeout(() => {
             this.els.searchInput.focus();
-        }, 100);
+        }, 400);
+
+        // Push state for back-button dismissal
+        history.pushState({ view: 'search' }, '', '');
 
         // Bind events if not already bound
         if (!this.searchEventsBound) {
-            this.els.searchCloseBtn.addEventListener('click', () => this.closeSearch());
+            // Dismiss button (slides down)
+            const dismissBtn = document.getElementById('search-dismiss-btn');
+            if (dismissBtn) {
+                dismissBtn.addEventListener('click', () => {
+                    // Manual close: go back in history to trigger popstate
+                    history.back();
+                });
+            }
+
+            // Clear button
+            if (this.els.searchClearBtn) {
+                this.els.searchClearBtn.addEventListener('click', () => {
+                    this.els.searchInput.value = '';
+                    this.els.searchResults.innerHTML = '';
+                    this.els.searchClearBtn.style.display = 'none';
+                    this.els.searchInput.focus();
+                });
+            }
 
             let debounceTimer;
             this.els.searchInput.addEventListener('input', () => {
+                // Show/hide clear button
+                this.els.searchClearBtn.style.display = this.els.searchInput.value ? 'flex' : 'none';
+
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(() => {
                     this.performSearch(this.els.searchInput.value);
@@ -1663,12 +1704,97 @@ const App = {
 
             this.searchEventsBound = true;
         }
+
+        // Always bind/rebind swipe to ensure it works
+        this.bindSearchSwipe();
+    },
+
+    bindSearchSwipe() {
+        if (!this.els.searchModal) return;
+
+        let startY = 0;
+        let currentY = 0;
+        let isDragging = false;
+        const modal = this.els.searchModal;
+        const threshold = 100; // Drag distance to trigger dismissal
+
+        // Handle swipe on the top areas (dismiss area and search header)
+        const swipeAreas = [
+            document.querySelector('.search-dismiss-container'),
+            document.querySelector('.search-header')
+        ];
+
+        const handleStart = (e) => {
+            startY = e.touches ? e.touches[0].clientY : e.clientY;
+            isDragging = true;
+            modal.style.transition = 'none'; // Disable transition while dragging
+        };
+
+        const handleMove = (e) => {
+            if (!isDragging) return;
+            currentY = e.touches ? e.touches[0].clientY : e.clientY;
+            const deltaY = currentY - startY;
+
+            if (deltaY > 0) {
+                // Dragging down
+                modal.style.transform = `translateY(${deltaY}px)`;
+                // Prevent scrolling when dragging down to dismiss
+                if (e.cancelable) e.preventDefault();
+            }
+        };
+
+        const handleEnd = () => {
+            if (!isDragging) return;
+            isDragging = false;
+            modal.style.transition = ''; // Restore transition
+
+            const deltaY = currentY - startY;
+            if (deltaY > threshold) {
+                // Trigger dismissal
+                history.back();
+            } else {
+                // Snap back
+                modal.style.transform = '';
+            }
+            startY = 0;
+            currentY = 0;
+        };
+
+        swipeAreas.forEach(area => {
+            if (!area) return;
+            // Remove old listeners if any (though searchEventsBound handles most)
+            area.removeEventListener('touchstart', area._swipeStart);
+            area.removeEventListener('touchmove', area._swipeMove);
+            area.removeEventListener('touchend', area._swipeEnd);
+
+            area._swipeStart = handleStart;
+            area._swipeMove = handleMove;
+            area._swipeEnd = handleEnd;
+
+            area.addEventListener('touchstart', handleStart, { passive: false });
+            area.addEventListener('touchmove', handleMove, { passive: false });
+            area.addEventListener('touchend', handleEnd);
+
+            // Mouse counterparts for easier dev testing
+            area.addEventListener('mousedown', handleStart);
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+        });
     },
 
     closeSearch() {
         if (!this.els.searchModal) return;
-        this.els.searchModal.classList.add('hidden');
+
+        this.els.searchModal.style.transform = ''; // Reset transform in case it was dragged
+        this.els.searchModal.classList.remove('active');
         this.els.searchInput.blur();
+
+        // Hide after animation finishes
+        setTimeout(() => {
+            if (!this.els.searchModal.classList.contains('active')) {
+                this.els.searchModal.classList.add('hidden');
+            }
+        }, 400);
     },
 
     performSearch(query) {
@@ -1736,7 +1862,22 @@ const App = {
     },
 
     openSearchResult(testament, bookName, chapterNumber, verseNumber) {
-        this.closeSearch();
+        // Close search (this will trigger history.back() via popstate or we do it manually)
+        // Actually, we should close search and remove its state from history
+        if (history.state && history.state.view === 'search') {
+            this.closeSearch();
+            history.back();
+            // Need to wait slightly for history.back to process before navigating
+            setTimeout(() => {
+                this._navigateToResult(testament, bookName, chapterNumber, verseNumber);
+            }, 50);
+        } else {
+            this.closeSearch();
+            this._navigateToResult(testament, bookName, chapterNumber, verseNumber);
+        }
+    },
+
+    _navigateToResult(testament, bookName, chapterNumber, verseNumber) {
         this.saveCurrentTabState();
 
         const newTab = {

@@ -108,9 +108,14 @@
 
         <!-- Search Modal -->
         <div id="search-modal" class="search-modal hidden">
+            <div class="search-dismiss-container">
+                <button id="search-dismiss-btn" class="search-dismiss-btn">Dismiss</button>
+            </div>
             <div class="search-header">
-                <input type="text" id="search-input" placeholder="Search the Bible..." autocomplete="off">
-                <button id="search-close-btn" class="search-close-btn">✕</button>
+                <div class="search-input-wrapper">
+                    <input type="text" id="search-input" placeholder="Search the Bible..." autocomplete="off">
+                    <button id="search-clear-btn" class="search-clear-btn">✕</button>
+                </div>
             </div>
             <div id="search-results" class="search-results"></div>
         </div>
