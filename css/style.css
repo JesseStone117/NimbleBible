@@ -329,6 +329,13 @@ body {
     padding: 40px 20px;
 }
 
+.search-results-status {
+    text-align: center;
+    color: rgba(255, 255, 255, 0.55);
+    font-size: 0.82rem;
+    padding: 8px 6px 18px;
+}
+
 h1 {
     font-size: 1.2rem;
     margin: 0;

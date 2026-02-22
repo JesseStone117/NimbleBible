@@ -21,6 +21,14 @@ const App = {
         activeTabId: null,
         nextTabId: 1,
         toolbarExpanded: false,
+        // Search state
+        search: {
+            query: '',
+            matches: [],
+            renderedCount: 0,
+            batchSize: 60,
+            scrollTop: 0
+        },
         // Nimble scroll state for smooth scrolling
         nimbleScrollDirection: 0,
         nimbleScrollAnimationId: null,
@@ -48,6 +56,7 @@ const App = {
         '1 Peter': '1PE', '2 Peter': '2PE', '1 John': '1JO', '2 John': '2JO',
         '3 John': '3JO', 'Jude': 'JUD', 'Revelation': 'REV'
     },
+    searchEventsBound: false,
 
     async init() {
         const loaded = await DataManager.init();
@@ -1095,47 +1104,84 @@ const App = {
         let startX = 0;
         let startY = 0;
         let hasMoved = false;
+        let isRangeDragActive = false;
+        let rangeAnchorVerse = null;
+        let lastDraggedVerse = null;
+        let hasDraggedRange = false;
+        let mouseTracking = false;
+
+        const getPoint = (e) => {
+            if (e.touches && e.touches.length > 0) {
+                return { x: e.touches[0].clientX, y: e.touches[0].clientY };
+            }
+            if (e.changedTouches && e.changedTouches.length > 0) {
+                return { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+            }
+            if (e.clientX !== undefined && e.clientY !== undefined) {
+                return { x: e.clientX, y: e.clientY };
+            }
+            return null;
+        };
 
         const handleStart = (e) => {
-            // Don't prevent default - allow scrolling
             hasMoved = false;
             isLongPress = false;
+            isRangeDragActive = false;
+            rangeAnchorVerse = null;
+            lastDraggedVerse = null;
+            hasDraggedRange = false;
 
-            // Get starting position
-            if (e.touches && e.touches.length > 0) {
-                startX = e.touches[0].clientX;
-                startY = e.touches[0].clientY;
-            } else if (e.clientX !== undefined) {
-                startX = e.clientX;
-                startY = e.clientY;
+            const point = getPoint(e);
+            if (point) {
+                startX = point.x;
+                startY = point.y;
+            }
+
+            if (e.type === 'mousedown') {
+                startMouseTracking();
             }
 
             pressTimer = setTimeout(() => {
-                // Long press detected - execute immediately
-                if (!hasMoved) {
+                if (hasMoved) return;
+
+                const anchorVerse = this.handleVerseLongPress(verseEl);
+                if (anchorVerse !== null) {
                     isLongPress = true;
-                    this.handleVerseLongPress(verseEl, verse);
+                    isRangeDragActive = true;
+                    rangeAnchorVerse = anchorVerse;
+                    lastDraggedVerse = anchorVerse;
+                    hasDraggedRange = false;
                 }
-            }, 500); // 500ms for long press
+            }, 450);
         };
 
         const handleMove = (e) => {
-            // Check if user has moved significantly (scrolling)
-            let currentX, currentY;
-            if (e.touches && e.touches.length > 0) {
-                currentX = e.touches[0].clientX;
-                currentY = e.touches[0].clientY;
-            } else if (e.clientX !== undefined) {
-                currentX = e.clientX;
-                currentY = e.clientY;
-            } else {
+            const point = getPoint(e);
+            if (!point) return;
+
+            if (isRangeDragActive && rangeAnchorVerse !== null) {
+                const hoveredVerseEl = this.getVerseElementFromPoint(point.x, point.y);
+                if (hoveredVerseEl) {
+                    const hoveredVerseNum = parseInt(hoveredVerseEl.dataset.verseNumber, 10);
+                    if (!Number.isNaN(hoveredVerseNum) && hoveredVerseNum !== lastDraggedVerse) {
+                        this.setVerseRangeSelection(rangeAnchorVerse, hoveredVerseNum);
+                        lastDraggedVerse = hoveredVerseNum;
+                        if (hoveredVerseNum !== rangeAnchorVerse) {
+                            hasDraggedRange = true;
+                        }
+                    }
+                }
+
+                if (e.cancelable) {
+                    e.preventDefault();
+                }
                 return;
             }
 
-            const deltaX = Math.abs(currentX - startX);
-            const deltaY = Math.abs(currentY - startY);
+            const deltaX = Math.abs(point.x - startX);
+            const deltaY = Math.abs(point.y - startY);
 
-            // If moved more than 10px, consider it scrolling
+            // If moved more than 10px before long press, treat as scroll intent.
             if (deltaX > 10 || deltaY > 10) {
                 hasMoved = true;
                 clearTimeout(pressTimer);
@@ -1147,39 +1193,94 @@ const App = {
 
             // Ignore if in navigation cooldown (prevents accidental selection when switching views)
             if (this.state.navigationCooldown) {
+                stopMouseTracking();
                 hasMoved = false;
                 isLongPress = false;
+                isRangeDragActive = false;
+                rangeAnchorVerse = null;
+                lastDraggedVerse = null;
+                hasDraggedRange = false;
                 return;
             }
 
-            // Only handle single tap if there was no movement and no long press occurred
+            if (isRangeDragActive) {
+                if (e.cancelable) {
+                    e.preventDefault();
+                }
+                e.stopPropagation();
+
+                if (!hasDraggedRange && rangeAnchorVerse !== null) {
+                    this.clearVerseSelection();
+                    const anchorEl = document.getElementById(`verse-${rangeAnchorVerse}`);
+                    if (anchorEl) {
+                        this.state.verseSelection.singleSelected = rangeAnchorVerse;
+                        anchorEl.classList.add('selected');
+                        this.showToolbar();
+                    }
+                }
+
+                stopMouseTracking();
+                hasMoved = false;
+                isLongPress = false;
+                isRangeDragActive = false;
+                rangeAnchorVerse = null;
+                lastDraggedVerse = null;
+                hasDraggedRange = false;
+                return;
+            }
+
+            // Only handle single tap if there was no movement and no long press occurred.
             if (!hasMoved && !isLongPress) {
-                e.preventDefault();
+                if (e.cancelable) {
+                    e.preventDefault();
+                }
                 e.stopPropagation();
                 this.handleVerseSingleTap(verseEl, verse);
             }
 
             // Reset flags for next interaction
+            stopMouseTracking();
             isLongPress = false;
             hasMoved = false;
+            isRangeDragActive = false;
+            rangeAnchorVerse = null;
+            lastDraggedVerse = null;
+            hasDraggedRange = false;
         };
 
         const handleCancel = () => {
             clearTimeout(pressTimer);
+            stopMouseTracking();
             hasMoved = false;
+            isLongPress = false;
+            isRangeDragActive = false;
+            rangeAnchorVerse = null;
+            lastDraggedVerse = null;
+            hasDraggedRange = false;
+        };
+
+        const startMouseTracking = () => {
+            if (mouseTracking) return;
+            mouseTracking = true;
+            window.addEventListener('mousemove', handleMove);
+            window.addEventListener('mouseup', handleEnd);
+        };
+
+        const stopMouseTracking = () => {
+            if (!mouseTracking) return;
+            mouseTracking = false;
+            window.removeEventListener('mousemove', handleMove);
+            window.removeEventListener('mouseup', handleEnd);
         };
 
         // Touch events
         verseEl.addEventListener('touchstart', handleStart, { passive: true });
-        verseEl.addEventListener('touchmove', handleMove, { passive: true });
+        verseEl.addEventListener('touchmove', handleMove, { passive: false });
         verseEl.addEventListener('touchend', handleEnd, { passive: false });
         verseEl.addEventListener('touchcancel', handleCancel, { passive: true });
 
         // Mouse events (for desktop/testing)
         verseEl.addEventListener('mousedown', handleStart);
-        verseEl.addEventListener('mousemove', handleMove);
-        verseEl.addEventListener('mouseup', handleEnd);
-        verseEl.addEventListener('mouseleave', handleCancel);
 
         // Prevent context menu
         verseEl.addEventListener('contextmenu', (e) => {
@@ -1190,6 +1291,21 @@ const App = {
         verseEl.addEventListener('selectstart', (e) => {
             e.preventDefault();
         });
+    },
+
+    getVerseElementFromPoint(x, y) {
+        const target = document.elementFromPoint(x, y);
+        return target ? target.closest('.verse') : null;
+    },
+
+    setVerseRangeSelection(anchorVerse, endVerse) {
+        if (anchorVerse === null || endVerse === null) return;
+
+        this.state.verseSelection.singleSelected = null;
+        this.state.verseSelection.rangeStart = Math.min(anchorVerse, endVerse);
+        this.state.verseSelection.rangeEnd = Math.max(anchorVerse, endVerse);
+        this.updateVerseRangeSelection();
+        this.showToolbar();
     },
 
     handleVerseSingleTap(verseEl, verse) {
@@ -1219,27 +1335,14 @@ const App = {
         }
     },
 
-    handleVerseLongPress(verseEl, verse) {
-        const verseNum = parseInt(verseEl.dataset.verseNumber);
-        const singleSelected = this.state.verseSelection.singleSelected;
-
-        // If no single selection exists, just select this verse as single
-        if (singleSelected === null) {
-            this.handleVerseSingleTap(verseEl, verse);
-            return;
+    handleVerseLongPress(verseEl) {
+        const verseNum = parseInt(verseEl.dataset.verseNumber, 10);
+        if (Number.isNaN(verseNum)) {
+            return null;
         }
 
-        // Clear single selection and create range
-        const prevEl = document.getElementById(`verse-${singleSelected}`);
-        if (prevEl) prevEl.classList.remove('selected');
-
-        this.state.verseSelection.singleSelected = null;
-        this.state.verseSelection.rangeStart = Math.min(singleSelected, verseNum);
-        this.state.verseSelection.rangeEnd = Math.max(singleSelected, verseNum);
-
-        // Highlight all verses in range
-        this.updateVerseRangeSelection();
-        this.showToolbar();
+        this.setVerseRangeSelection(verseNum, verseNum);
+        return verseNum;
     },
 
     updateVerseRangeSelection() {
@@ -1332,6 +1435,22 @@ const App = {
         return this.bookAbbreviations[bookName] || bookName.substring(0, 3).toUpperCase();
     },
 
+    isHomeTab(tab) {
+        return !!tab && !tab.bookName && !tab.chapterNumber;
+    },
+
+    dedupeHomeTabs() {
+        const homeTabs = this.state.tabs.filter(tab => this.isHomeTab(tab));
+        if (homeTabs.length <= 1) return;
+
+        const activeTab = this.state.tabs.find(tab => tab.id === this.state.activeTabId);
+        const keepHomeTabId = activeTab && this.isHomeTab(activeTab)
+            ? activeTab.id
+            : homeTabs[0].id;
+
+        this.state.tabs = this.state.tabs.filter(tab => !this.isHomeTab(tab) || tab.id === keepHomeTabId);
+    },
+
     getTabLabel(tab) {
         if (!tab.bookName || !tab.chapterNumber) {
             return 'Home';
@@ -1348,7 +1467,7 @@ const App = {
         this.saveCurrentTabState();
 
         // Check if there's already a home tab (a tab with no book/chapter)
-        const existingHomeTab = this.state.tabs.find(t => !t.bookName && !t.chapterNumber);
+        const existingHomeTab = this.state.tabs.find(t => this.isHomeTab(t));
         if (existingHomeTab) {
             // Reuse existing home tab
             this.state.activeTabId = existingHomeTab.id;
@@ -1461,6 +1580,7 @@ const App = {
     renderTabs() {
         if (!this.els.tabsContainer) return;
 
+        this.dedupeHomeTabs();
         this.els.tabsContainer.innerHTML = '';
 
         this.state.tabs.forEach(tab => {
@@ -1650,21 +1770,32 @@ const App = {
 
     openSearch() {
         if (!this.els.searchModal) return;
+        if (this.els.searchModal.classList.contains('active')) return;
 
-        // Reset search input and results
-        this.els.searchInput.value = '';
-        this.els.searchResults.innerHTML = '';
-        this.els.searchClearBtn.style.display = 'none';
+        // Restore last query/results state instead of resetting every open.
+        this.els.searchInput.value = this.state.search.query;
+        this.els.searchClearBtn.style.display = this.state.search.query ? 'flex' : 'none';
+
+        if (this.state.search.query.length >= 2) {
+            const targetCount = Math.max(this.state.search.renderedCount, this.state.search.batchSize);
+            this.renderSearchResults(targetCount);
+        } else if (!this.state.search.query) {
+            this.els.searchResults.innerHTML = '';
+        }
 
         // Show modal with slide-up animation
         this.els.searchModal.classList.remove('hidden');
-        // Small delay to ensure display:flex is applied before trigger transition
         requestAnimationFrame(() => {
             this.els.searchModal.classList.add('active');
         });
 
         setTimeout(() => {
             this.els.searchInput.focus();
+
+            if (this.state.search.query.length >= 2) {
+                this.els.searchResults.scrollTop = this.state.search.scrollTop || 0;
+                this.maybeLoadMoreSearchResults(true);
+            }
         }, 400);
 
         // Push state for back-button dismissal
@@ -1676,7 +1807,6 @@ const App = {
             const dismissBtn = document.getElementById('search-dismiss-btn');
             if (dismissBtn) {
                 dismissBtn.addEventListener('click', () => {
-                    // Manual close: go back in history to trigger popstate
                     history.back();
                 });
             }
@@ -1685,6 +1815,7 @@ const App = {
             if (this.els.searchClearBtn) {
                 this.els.searchClearBtn.addEventListener('click', () => {
                     this.els.searchInput.value = '';
+                    this.clearSearchState(true);
                     this.els.searchResults.innerHTML = '';
                     this.els.searchClearBtn.style.display = 'none';
                     this.els.searchInput.focus();
@@ -1693,14 +1824,35 @@ const App = {
 
             let debounceTimer;
             this.els.searchInput.addEventListener('input', () => {
+                const value = this.els.searchInput.value;
+
                 // Show/hide clear button
-                this.els.searchClearBtn.style.display = this.els.searchInput.value ? 'flex' : 'none';
+                this.els.searchClearBtn.style.display = value ? 'flex' : 'none';
 
                 clearTimeout(debounceTimer);
                 debounceTimer = setTimeout(() => {
-                    this.performSearch(this.els.searchInput.value);
+                    this.performSearch(value);
                 }, 300);
             });
+
+            if (this.els.searchResults) {
+                this.els.searchResults.addEventListener('click', (e) => {
+                    const item = e.target.closest('.search-result-item');
+                    if (!item) return;
+
+                    this.openSearchResult(
+                        item.dataset.testament,
+                        item.dataset.book,
+                        parseInt(item.dataset.chapter, 10),
+                        parseInt(item.dataset.verse, 10)
+                    );
+                });
+
+                this.els.searchResults.addEventListener('scroll', () => {
+                    this.state.search.scrollTop = this.els.searchResults.scrollTop;
+                    this.maybeLoadMoreSearchResults();
+                });
+            }
 
             this.searchEventsBound = true;
         }
@@ -1785,6 +1937,10 @@ const App = {
     closeSearch() {
         if (!this.els.searchModal) return;
 
+        if (this.els.searchResults) {
+            this.state.search.scrollTop = this.els.searchResults.scrollTop;
+        }
+
         this.els.searchModal.style.transform = ''; // Reset transform in case it was dragged
         this.els.searchModal.classList.remove('active');
         this.els.searchInput.blur();
@@ -1797,17 +1953,33 @@ const App = {
         }, 400);
     },
 
+    clearSearchState(clearQuery = false) {
+        if (clearQuery) {
+            this.state.search.query = '';
+        }
+
+        this.state.search.matches = [];
+        this.state.search.renderedCount = 0;
+        this.state.search.scrollTop = 0;
+    },
+
     performSearch(query) {
-        if (!query || query.length < 2) {
+        const trimmedQuery = (query || '').trim();
+        this.state.search.query = trimmedQuery;
+
+        if (!trimmedQuery || trimmedQuery.length < 2) {
+            this.clearSearchState(false);
+            this.state.search.query = trimmedQuery;
             this.els.searchResults.innerHTML = '';
             return;
         }
 
         const results = [];
-        const queryLower = query.toLowerCase();
-        const maxResults = 50;
+        const queryLower = trimmedQuery.toLowerCase();
 
-        for (const book of DataManager.books) {
+        for (let bookIndex = 0; bookIndex < DataManager.books.length; bookIndex++) {
+            const book = DataManager.books[bookIndex];
+            const testament = bookIndex < 39 ? 'Old Testament' : 'New Testament';
             for (const chapter of book.chapters) {
                 for (const verse of chapter.verses) {
                     if (verse.text.toLowerCase().includes(queryLower)) {
@@ -1815,59 +1987,123 @@ const App = {
                             book: book,
                             chapter: chapter,
                             verse: verse,
-                            testament: DataManager.books.indexOf(book) < 39 ? 'Old Testament' : 'New Testament'
+                            testament: testament
                         });
-                        if (results.length >= maxResults) break;
                     }
                 }
-                if (results.length >= maxResults) break;
             }
-            if (results.length >= maxResults) break;
         }
 
-        this.renderSearchResults(results, query);
+        this.state.search.matches = results;
+        this.state.search.renderedCount = 0;
+        this.state.search.scrollTop = 0;
+
+        this.renderSearchResults(this.state.search.batchSize);
+        this.maybeLoadMoreSearchResults(true);
     },
 
-    renderSearchResults(results, query) {
+    renderSearchResults(targetCount = this.state.search.batchSize) {
+        const query = this.state.search.query;
+        const results = this.state.search.matches;
+
+        this.els.searchResults.innerHTML = '';
+        this.state.search.renderedCount = 0;
+
+        if (!query || query.length < 2) {
+            return;
+        }
+
         if (results.length === 0) {
             this.els.searchResults.innerHTML = `<div class="search-no-results">No results found for "${query}"</div>`;
             return;
         }
 
-        const html = results.map(result => {
-            const ref = `${result.book.name} ${result.chapter.number}:${result.verse.number}`;
-            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-            const highlightedText = result.verse.text.replace(regex, '<mark>$1</mark>');
+        const desiredCount = Math.max(this.state.search.batchSize, targetCount);
+        while (
+            this.state.search.renderedCount < results.length &&
+            this.state.search.renderedCount < desiredCount
+        ) {
+            this.appendSearchResultsBatch();
+        }
+    },
 
-            return `
-                <div class="search-result-item" data-book="${result.book.name}" data-chapter="${result.chapter.number}" data-verse="${result.verse.number}" data-testament="${result.testament}">
-                    <div class="search-result-ref">${ref}</div>
-                    <div class="search-result-text">${highlightedText}</div>
-                </div>
-            `;
-        }).join('');
+    appendSearchResultsBatch() {
+        const start = this.state.search.renderedCount;
+        if (start >= this.state.search.matches.length) {
+            this.updateSearchResultsStatus();
+            return;
+        }
 
-        this.els.searchResults.innerHTML = html;
+        const end = Math.min(start + this.state.search.batchSize, this.state.search.matches.length);
+        const query = this.state.search.query;
+        const html = this.state.search.matches
+            .slice(start, end)
+            .map(result => this.createSearchResultHtml(result, query))
+            .join('');
 
-        this.els.searchResults.querySelectorAll('.search-result-item').forEach(item => {
-            item.addEventListener('click', () => {
-                this.openSearchResult(
-                    item.dataset.testament,
-                    item.dataset.book,
-                    parseInt(item.dataset.chapter),
-                    parseInt(item.dataset.verse)
-                );
-            });
-        });
+        this.els.searchResults.insertAdjacentHTML('beforeend', html);
+        this.state.search.renderedCount = end;
+        this.updateSearchResultsStatus();
+    },
+
+    createSearchResultHtml(result, query) {
+        const ref = `${result.book.name} ${result.chapter.number}:${result.verse.number}`;
+        const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+        const highlightedText = result.verse.text.replace(regex, '<mark>$1</mark>');
+
+        return `
+            <div class="search-result-item" data-book="${result.book.name}" data-chapter="${result.chapter.number}" data-verse="${result.verse.number}" data-testament="${result.testament}">
+                <div class="search-result-ref">${ref}</div>
+                <div class="search-result-text">${highlightedText}</div>
+            </div>
+        `;
+    },
+
+    updateSearchResultsStatus() {
+        if (!this.els.searchResults) return;
+
+        const existingStatus = this.els.searchResults.querySelector('.search-results-status');
+        if (!this.state.search.query || this.state.search.matches.length === 0) {
+            if (existingStatus) existingStatus.remove();
+            return;
+        }
+
+        const statusEl = existingStatus || document.createElement('div');
+        statusEl.className = 'search-results-status';
+
+        const shown = this.state.search.renderedCount;
+        const total = this.state.search.matches.length;
+        statusEl.textContent = shown < total
+            ? `Showing ${shown} of ${total} results. Scroll to load more.`
+            : `Showing all ${total} results.`;
+
+        this.els.searchResults.appendChild(statusEl);
+    },
+
+    maybeLoadMoreSearchResults(force = false) {
+        if (!this.els.searchResults) return;
+        if (this.state.search.matches.length === 0) return;
+
+        let guard = 0;
+        while (this.state.search.renderedCount < this.state.search.matches.length && guard < 12) {
+            const nearBottom = this.els.searchResults.scrollTop + this.els.searchResults.clientHeight >=
+                this.els.searchResults.scrollHeight - 240;
+            const needsFill = this.els.searchResults.scrollHeight <= this.els.searchResults.clientHeight + 30;
+
+            if (!force && !nearBottom && !needsFill) {
+                break;
+            }
+
+            this.appendSearchResultsBatch();
+            force = false;
+            guard++;
+        }
     },
 
     openSearchResult(testament, bookName, chapterNumber, verseNumber) {
-        // Close search (this will trigger history.back() via popstate or we do it manually)
-        // Actually, we should close search and remove its state from history
         if (history.state && history.state.view === 'search') {
             this.closeSearch();
             history.back();
-            // Need to wait slightly for history.back to process before navigating
             setTimeout(() => {
                 this._navigateToResult(testament, bookName, chapterNumber, verseNumber);
             }, 50);
@@ -1880,17 +2116,26 @@ const App = {
     _navigateToResult(testament, bookName, chapterNumber, verseNumber) {
         this.saveCurrentTabState();
 
-        const newTab = {
-            id: this.state.nextTabId++,
-            testament: testament,
-            bookName: bookName,
-            chapterNumber: chapterNumber,
-            verseNumber: verseNumber,
-            scrollPosition: 0
-        };
+        const activeTab = this.state.tabs.find(t => t.id === this.state.activeTabId);
+        if (this.isHomeTab(activeTab)) {
+            activeTab.testament = testament;
+            activeTab.bookName = bookName;
+            activeTab.chapterNumber = chapterNumber;
+            activeTab.verseNumber = verseNumber;
+            activeTab.scrollPosition = 0;
+        } else {
+            const newTab = {
+                id: this.state.nextTabId++,
+                testament: testament,
+                bookName: bookName,
+                chapterNumber: chapterNumber,
+                verseNumber: verseNumber,
+                scrollPosition: 0
+            };
 
-        this.state.tabs.push(newTab);
-        this.state.activeTabId = newTab.id;
+            this.state.tabs.push(newTab);
+            this.state.activeTabId = newTab.id;
+        }
 
         this.state.testament = testament;
         const books = DataManager.getTestamentBooks(testament);
