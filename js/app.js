@@ -1614,6 +1614,9 @@ const App = {
         if (this.state.currentView === 'verseView' && this.els.verseContent) {
             currentTab.scrollPosition = this.els.verseContent.scrollTop;
         }
+
+        // Prevent duplicate home tabs from appearing
+        this.dedupeHomeTabs();
     },
 
     switchTab(tabId) {
@@ -2258,6 +2261,8 @@ const App = {
             }
         }
 
+        // Deduplicate home tabs before rendering
+        this.dedupeHomeTabs();
         this.renderTabs();
     }
 };
