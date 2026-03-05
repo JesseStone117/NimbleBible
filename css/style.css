@@ -838,7 +838,8 @@ h1 {
     color: white;
 }
 
-.new-tab-btn {
+.new-tab-btn,
+.copy-tabs-btn {
     width: 36px;
     height: 36px;
     border-radius: 8px;
@@ -855,12 +856,23 @@ h1 {
     transition: background 0.2s, color 0.2s;
 }
 
-.new-tab-btn:hover {
+.copy-tabs-btn svg {
+    display: block;
+}
+
+.copy-tabs-btn.success {
+    background: #4caf50;
+    color: white;
+}
+
+.new-tab-btn:hover,
+.copy-tabs-btn:hover {
     background: rgba(255, 255, 255, 0.2);
     color: white;
 }
 
-.new-tab-btn:active {
+.new-tab-btn:active,
+.copy-tabs-btn:active {
     transform: scale(0.95);
 }
 
