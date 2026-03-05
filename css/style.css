@@ -671,11 +671,20 @@ h1 {
     background: #2563eb;
 }
 
+/* Copy Button Specific Styling */
+.toolbar-btn.copy-btn {
+    margin-left: auto;
+    margin-right: 36px;
+    /* Space it away from the absolute positioned toggle arrow */
+}
+
 /* Copy Button Disabled State */
 .toolbar-btn.copy-btn.disabled {
     opacity: 0.4;
     cursor: not-allowed;
     background: #555;
+    margin-left: auto;
+    margin-right: 36px;
 }
 
 .toolbar-btn.copy-btn.disabled:hover {
@@ -701,8 +710,6 @@ h1 {
     flex-direction: column;
     gap: 6px;
     min-width: 120px;
-    margin-right: 30px;
-    /* Space for toggle button */
 }
 
 .scrubber-track {
