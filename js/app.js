@@ -841,11 +841,14 @@ const App = {
         if (highlightRange) {
             const rangeStart = Math.min(highlightRange.start, highlightRange.end);
             const rangeEnd = Math.max(highlightRange.start, highlightRange.end);
-            this.state.verseSelection.rangeStart = rangeStart;
-            this.state.verseSelection.rangeEnd = rangeEnd;
             this.state.targetVerseRangeEnd = rangeEnd;
-            this.updateVerseRangeSelection();
-            this.showToolbar();
+            // Use the white stripe style (nimble-target-visited) for range highlight
+            for (let i = rangeStart; i <= rangeEnd; i++) {
+                const el = document.getElementById(`verse-${i}`);
+                if (el) {
+                    el.classList.add('nimble-target-visited');
+                }
+            }
         }
 
         // Set navigation cooldown to prevent the tap that triggered navigation
@@ -1638,7 +1641,11 @@ const App = {
                 const chapter = book.chapters.find(c => c.number === tab.chapterNumber);
                 if (chapter) {
                     // Pass skipAutoScroll=true to prevent auto-scroll to verse
-                    this.openVerseView(chapter, tab.verseNumber || 1, true, true);
+                    // Restore verse range highlight if this tab had one
+                    const restoreRange = (tab.verseRangeEnd && tab.verseNumber && tab.verseRangeEnd !== tab.verseNumber)
+                        ? { start: tab.verseNumber, end: tab.verseRangeEnd }
+                        : null;
+                    this.openVerseView(chapter, tab.verseNumber || 1, true, true, restoreRange);
 
                     // Restore scroll position with smooth animation after view is rendered
                     if (tab.scrollPosition !== undefined && this.els.verseContent) {
