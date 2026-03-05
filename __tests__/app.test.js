@@ -109,16 +109,14 @@ beforeAll(() => {
 const fs = require('fs');
 const path = require('path');
 
-function loadScript(filePath) {
-    const code = fs.readFileSync(path.resolve(__dirname, filePath), 'utf-8');
-    // eslint-disable-next-line no-eval
-    eval(code);
-}
+const dataCode = fs.readFileSync(path.resolve(__dirname, '../js/data.js'), 'utf-8');
+eval(dataCode + '\nwindow.DataManager = DataManager;');
 
-// data.js defines DataManager, audio.js defines AudioManager, app.js defines App
-loadScript('../js/data.js');
-loadScript('../js/audio.js');
-loadScript('../js/app.js');
+const audioCode = fs.readFileSync(path.resolve(__dirname, '../js/audio.js'), 'utf-8');
+eval(audioCode + '\nwindow.AudioManager = AudioManager;');
+
+const appCode = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf-8');
+eval(appCode + '\nwindow.App = App;');
 
 // ─── Test Data ─────────────────────────────────────────────────────────────────
 
@@ -315,6 +313,7 @@ describe('Tab Management', () => {
             App.state.testament = 'Old Testament';
             App.state.book = mockBook;
             App.state.chapter = mockChapter;
+            App.state.nextTabId = 2;
 
             App.createNewTab();
 
