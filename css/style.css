@@ -860,11 +860,6 @@ h1 {
     display: block;
 }
 
-.copy-tabs-btn.success {
-    background: #4caf50;
-    color: white;
-}
-
 .new-tab-btn:hover,
 .copy-tabs-btn:hover {
     background: rgba(255, 255, 255, 0.2);

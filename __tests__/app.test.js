@@ -406,7 +406,6 @@ describe('Tab Management', () => {
             App.copyTabsToClipboard();
 
             expect(navigator.clipboard.writeText).toHaveBeenCalledWith('GEN1:5, EXO2:3-8');
-            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(true);
         });
 
         test('does nothing if only home tabs exist', () => {
@@ -418,7 +417,6 @@ describe('Tab Management', () => {
             App.copyTabsToClipboard();
 
             expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
-            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(false);
         });
 
         test('falls back to execCommand if clipboard API is unavailable', () => {
@@ -436,7 +434,6 @@ describe('Tab Management', () => {
             expect(document.execCommand).toHaveBeenCalledWith('copy');
             // Check that a textarea was temporarily added
             expect(document.querySelector('textarea')).toBeNull(); // It should be removed after
-            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(true);
         });
     });
 });

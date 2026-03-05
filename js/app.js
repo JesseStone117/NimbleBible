@@ -1560,20 +1560,6 @@ const App = {
         } else {
             this.fallbackCopyText(textToCopy);
         }
-
-        // Visual feedback
-        const originalHTML = this.els.copyTabsBtn.innerHTML;
-        this.els.copyTabsBtn.classList.add('success');
-        this.els.copyTabsBtn.innerHTML = `
-            <svg viewBox="0 0 24 24" width="18" height="18">
-                <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        `;
-
-        setTimeout(() => {
-            this.els.copyTabsBtn.innerHTML = originalHTML;
-            this.els.copyTabsBtn.classList.remove('success');
-        }, 2000);
     },
 
     // === TAB MANAGEMENT ===
