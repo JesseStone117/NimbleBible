@@ -362,6 +362,83 @@ describe('Tab Management', () => {
             expect(homeTabs.length).toBe(1);
         });
     });
+
+    // ── copyTabsToClipboard ─────────────────────────────────────────────
+
+    describe('copyTabsToClipboard', () => {
+        let originalClipboard;
+        let originalExecCommand;
+
+        beforeEach(() => {
+            originalClipboard = navigator.clipboard;
+            originalExecCommand = document.execCommand;
+
+            const mockWriteText = jest.fn().mockResolvedValue();
+            Object.defineProperty(navigator, 'clipboard', {
+                value: { writeText: mockWriteText },
+                writable: true
+            });
+            document.execCommand = jest.fn().mockReturnValue(true);
+
+            // Add the copy tabs button to the DOM
+            const btn = document.createElement('button');
+            btn.id = 'copy-tabs-btn';
+            App.els.tabsBar.appendChild(btn);
+            App.els.copyTabsBtn = btn;
+        });
+
+        afterEach(() => {
+            Object.defineProperty(navigator, 'clipboard', {
+                value: originalClipboard,
+                writable: true
+            });
+            document.execCommand = originalExecCommand;
+        });
+
+        test('copies non-home tabs as comma-separated labels', async () => {
+            // Set up a mix of home and assigned tabs
+            App.state.tabs = [
+                { id: 1, bookName: null, chapterNumber: null },
+                { id: 2, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 },
+                { id: 3, bookName: 'Exodus', chapterNumber: 2, verseNumber: 3, verseRangeEnd: 8 }
+            ];
+
+            App.copyTabsToClipboard();
+
+            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('GEN1:5, EXO2:3-8');
+            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(true);
+        });
+
+        test('does nothing if only home tabs exist', () => {
+            App.state.tabs = [
+                { id: 1, bookName: null, chapterNumber: null },
+                { id: 2, bookName: null, chapterNumber: null }
+            ];
+
+            App.copyTabsToClipboard();
+
+            expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
+            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(false);
+        });
+
+        test('falls back to execCommand if clipboard API is unavailable', () => {
+            Object.defineProperty(navigator, 'clipboard', {
+                value: undefined,
+                writable: true
+            });
+
+            App.state.tabs = [
+                { id: 1, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 }
+            ];
+
+            App.copyTabsToClipboard();
+
+            expect(document.execCommand).toHaveBeenCalledWith('copy');
+            // Check that a textarea was temporarily added
+            expect(document.querySelector('textarea')).toBeNull(); // It should be removed after
+            expect(App.els.copyTabsBtn.classList.contains('success')).toBe(true);
+        });
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

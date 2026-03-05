@@ -142,6 +142,7 @@ const App = {
             tabsBar: document.getElementById('tabs-bar'),
             tabsContainer: document.getElementById('tabs-container'),
             newTabBtn: document.getElementById('new-tab-btn'),
+            copyTabsBtn: document.getElementById('copy-tabs-btn'),
 
             // Search elements
             searchModal: document.getElementById('search-modal'),
@@ -208,6 +209,13 @@ const App = {
 
             // Long press for nimble navigation (skip progress to avoid toolbar visual glitch)
             this.bindNimbleTrigger(this.els.newTabBtn, { fromNewTab: true }, { skipProgress: true });
+        }
+
+        // Copy tabs button
+        if (this.els.copyTabsBtn) {
+            this.els.copyTabsBtn.addEventListener('click', () => {
+                this.copyTabsToClipboard();
+            });
         }
 
         // Audio controls
@@ -1511,23 +1519,61 @@ const App = {
             if (navigator.clipboard && navigator.clipboard.writeText) {
                 navigator.clipboard.writeText(textToCopy).catch(err => {
                     console.error('Failed to copy text:', err);
+                    this.fallbackCopyText(textToCopy);
                 });
             } else {
-                // Fallback for older browsers
-                const textArea = document.createElement('textarea');
-                textArea.value = textToCopy;
-                textArea.style.position = 'fixed';
-                textArea.style.opacity = '0';
-                document.body.appendChild(textArea);
-                textArea.select();
-                try {
-                    document.execCommand('copy');
-                } catch (err) {
-                    console.error('Fallback copy failed:', err);
-                }
-                document.body.removeChild(textArea);
+                this.fallbackCopyText(textToCopy);
             }
         }
+    },
+
+    fallbackCopyText(textToCopy) {
+        const textArea = document.createElement('textarea');
+        textArea.value = textToCopy;
+        textArea.style.position = 'fixed';
+        textArea.style.opacity = '0';
+        document.body.appendChild(textArea);
+        textArea.select();
+        try {
+            document.execCommand('copy');
+        } catch (err) {
+            console.error('Fallback copy failed:', err);
+        }
+        document.body.removeChild(textArea);
+    },
+
+    copyTabsToClipboard() {
+        if (!this.els.copyTabsBtn) return;
+
+        // Filter out home tabs
+        const passageTabs = this.state.tabs.filter(t => !this.isHomeTab(t));
+        if (passageTabs.length === 0) return;
+
+        // Map to labels (e.g. GEN1:5-8) and join with commas
+        const textToCopy = passageTabs.map(t => this.getTabLabel(t)).join(', ');
+
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(textToCopy).catch(err => {
+                console.error('Failed to copy tabs text:', err);
+                this.fallbackCopyText(textToCopy);
+            });
+        } else {
+            this.fallbackCopyText(textToCopy);
+        }
+
+        // Visual feedback
+        const originalHTML = this.els.copyTabsBtn.innerHTML;
+        this.els.copyTabsBtn.classList.add('success');
+        this.els.copyTabsBtn.innerHTML = `
+            <svg viewBox="0 0 24 24" width="18" height="18">
+                <path d="M20 6L9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+        `;
+
+        setTimeout(() => {
+            this.els.copyTabsBtn.innerHTML = originalHTML;
+            this.els.copyTabsBtn.classList.remove('success');
+        }, 2000);
     },
 
     // === TAB MANAGEMENT ===
