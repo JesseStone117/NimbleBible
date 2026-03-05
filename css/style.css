@@ -399,6 +399,21 @@ h1 {
     max-width: calc(100% + 2px);
 }
 
+/* Nimble verse drag: anchor verse (the one long-pressed) */
+.grid-item.nimble-anchor {
+    background-color: rgba(59, 130, 246, 0.4);
+    transform: scale(1.05);
+    z-index: 2;
+    box-shadow: 0 0 0 2px var(--accent-color), 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Nimble verse drag: range items between anchor and current drag position */
+.grid-item.nimble-range {
+    background-color: rgba(59, 130, 246, 0.2);
+    transform: scale(1.02);
+    z-index: 1;
+}
+
 /* Verse View */
 #verse-content {
     width: 100%;

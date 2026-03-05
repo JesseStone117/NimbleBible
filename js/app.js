@@ -9,7 +9,9 @@ const App = {
             timer: null,
             currentItem: null,
             progressCleanup: null,
-            progressDelayTimer: null
+            progressDelayTimer: null,
+            verseAnchor: null,
+            verseDragEnd: null
         },
         verseSelection: {
             singleSelected: null,
@@ -797,9 +799,10 @@ const App = {
         this.switchView('verseListView', skipHistory);
     },
 
-    openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll = false) {
+    openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll = false, highlightRange = null) {
         this.state.chapter = chapter;
         this.state.targetVerseNum = targetVerseNum; // Track for tab labels
+        this.state.targetVerseRangeEnd = null; // Reset range end
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
         // Reset verse selection
@@ -818,7 +821,7 @@ const App = {
             p.dataset.verseNumber = verse.number;
             p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
 
-            if (verse.number === targetVerseNum && targetVerseNum !== 1) {
+            if (!highlightRange && verse.number === targetVerseNum && targetVerseNum !== 1) {
                 // Use nimble target styling for navigated-to verses (not default verse 1)
                 p.classList.add('nimble-target');
                 // After animation completes, switch to visited state with just the stripe
@@ -834,6 +837,17 @@ const App = {
             this.els.verseContent.appendChild(p);
         });
 
+        // Apply highlight range if provided (from nimble verse range drag)
+        if (highlightRange) {
+            const rangeStart = Math.min(highlightRange.start, highlightRange.end);
+            const rangeEnd = Math.max(highlightRange.start, highlightRange.end);
+            this.state.verseSelection.rangeStart = rangeStart;
+            this.state.verseSelection.rangeEnd = rangeEnd;
+            this.state.targetVerseRangeEnd = rangeEnd;
+            this.updateVerseRangeSelection();
+            this.showToolbar();
+        }
+
         // Set navigation cooldown to prevent the tap that triggered navigation
         // from also selecting a verse in the newly rendered view
         this.state.navigationCooldown = true;
@@ -846,7 +860,8 @@ const App = {
         // Only auto-scroll if not restoring tab scroll position
         if (!skipAutoScroll) {
             setTimeout(() => {
-                const el = document.getElementById(`verse-${targetVerseNum}`);
+                const scrollTarget = targetVerseNum;
+                const el = document.getElementById(`verse-${scrollTarget}`);
                 if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
             }, 100);
         }
@@ -912,6 +927,22 @@ const App = {
         e.preventDefault();
 
         const touch = e.touches[0];
+
+        // === Verse drag sub-mode: track which verse grid item the finger is over ===
+        if (this.state.nimble.verseAnchor !== null) {
+            const target = document.elementFromPoint(touch.clientX, touch.clientY);
+            const itemEl = target?.closest('.grid-item');
+            if (itemEl && itemEl.dataset.type === 'verse' && itemEl.data) {
+                const verseNum = itemEl.data.number;
+                if (verseNum !== this.state.nimble.verseDragEnd) {
+                    this.state.nimble.verseDragEnd = verseNum;
+                    // Highlight range visually on the grid
+                    this.highlightNimbleVerseRange();
+                    if (navigator.vibrate) navigator.vibrate(10);
+                }
+            }
+            return;
+        }
 
         // Auto-scroll logic using requestAnimationFrame for smooth scrolling
         const activeList = document.querySelector('.view.active .grid-list');
@@ -1054,8 +1085,11 @@ const App = {
         } else if (type === 'chapter') {
             this.openVerseList(data);
         } else if (type === 'verse') {
-            this.endNimbleMode();
-            this.openVerseView(this.state.chapter, data.number);
+            // Enter verse drag sub-mode: store anchor and wait for drag or release
+            this.state.nimble.verseAnchor = data.number;
+            this.state.nimble.verseDragEnd = data.number;
+            // Mark the anchor item visually
+            itemEl.classList.add('nimble-anchor');
         }
 
         this.state.nimble.currentItem = null;
@@ -1091,11 +1125,75 @@ const App = {
     },
 
     endNimbleMode() {
+        const wasActive = this.state.nimble.active;
+        const verseAnchor = this.state.nimble.verseAnchor;
+        const verseDragEnd = this.state.nimble.verseDragEnd;
+
         this.state.nimble.active = false;
+        this.state.nimble.verseAnchor = null;
+        this.state.nimble.verseDragEnd = null;
         this.cancelHover();
         this.stopNimbleScroll();
         document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
+        document.querySelectorAll('.grid-item.nimble-anchor').forEach(el => el.classList.remove('nimble-anchor'));
+        document.querySelectorAll('.grid-item.nimble-range').forEach(el => el.classList.remove('nimble-range'));
         document.querySelectorAll('.big-btn.active').forEach(el => el.classList.remove('active'));
+
+        if (!wasActive) return;
+
+        // If we had a verse anchor (long-pressed a verse in the grid)
+        if (verseAnchor !== null && this.state.chapter) {
+            if (verseDragEnd !== null && verseDragEnd !== verseAnchor) {
+                // Dragged to a different verse: open with range highlighted
+                const rangeStart = Math.min(verseAnchor, verseDragEnd);
+                const rangeEnd = Math.max(verseAnchor, verseDragEnd);
+                this.openVerseView(this.state.chapter, rangeStart, false, false, {
+                    start: rangeStart,
+                    end: rangeEnd
+                });
+            } else {
+                // Released on the same verse: open at that specific verse
+                this.openVerseView(this.state.chapter, verseAnchor);
+            }
+            return;
+        }
+
+        // If on verse list view with no anchor, auto-open chapter at verse 1
+        if (this.state.currentView === 'verseListView' && this.state.chapter) {
+            this.openVerseView(this.state.chapter, 1);
+        }
+    },
+
+    // Highlight verse grid items in the range during nimble verse drag
+    highlightNimbleVerseRange() {
+        const anchor = this.state.nimble.verseAnchor;
+        const dragEnd = this.state.nimble.verseDragEnd;
+        if (anchor === null || dragEnd === null) return;
+
+        const rangeStart = Math.min(anchor, dragEnd);
+        const rangeEnd = Math.max(anchor, dragEnd);
+
+        // Clear all range highlights and anchor highlights
+        document.querySelectorAll('.grid-item.nimble-range').forEach(el => el.classList.remove('nimble-range'));
+        document.querySelectorAll('.grid-item.nimble-anchor').forEach(el => el.classList.remove('nimble-anchor'));
+        document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
+
+        // Highlight all verse grid items in range
+        const activeList = document.querySelector('.view.active .grid-list');
+        if (!activeList) return;
+
+        activeList.querySelectorAll('.grid-item').forEach(el => {
+            if (el.dataset.type === 'verse' && el.data) {
+                const num = el.data.number;
+                if (num >= rangeStart && num <= rangeEnd) {
+                    if (num === anchor) {
+                        el.classList.add('nimble-anchor');
+                    } else {
+                        el.classList.add('nimble-range');
+                    }
+                }
+            }
+        });
     },
 
     bindVerseSelection(verseEl, verse) {
@@ -1458,6 +1556,9 @@ const App = {
         let label = `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
         if (tab.verseNumber) {
             label += `:${tab.verseNumber}`;
+            if (tab.verseRangeEnd && tab.verseRangeEnd !== tab.verseNumber) {
+                label += `-${tab.verseRangeEnd}`;
+            }
         }
         return label;
     },
@@ -1504,6 +1605,7 @@ const App = {
         currentTab.bookName = this.state.book?.name || null;
         currentTab.chapterNumber = this.state.chapter?.number || null;
         currentTab.verseNumber = this.state.targetVerseNum || null;
+        currentTab.verseRangeEnd = this.state.targetVerseRangeEnd || null;
 
         // Save scroll position if in verse view
         if (this.state.currentView === 'verseView' && this.els.verseContent) {
