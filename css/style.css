@@ -72,8 +72,8 @@ body {
     flex-direction: column;
     background-color: var(--bg-color);
     transition: transform 0.3s ease;
-    overflow-x: hidden;
-    overflow-y: visible;
+    overflow: hidden;
+    /* Prevent entire view push. Child nodes will handle scrolling */
 }
 
 .view.hidden {
@@ -127,7 +127,7 @@ body {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-/* Header - sticky so always visible */
+/* Header - dynamically static within flex flow so it never hides */
 .header {
     display: flex;
     align-items: center;
@@ -136,12 +136,11 @@ body {
     border-bottom: 1px solid #333;
     min-height: 60px;
     flex-shrink: 0;
+    /* Prevents squishing if content below expands */
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
     overflow: hidden;
-    position: sticky;
-    top: 0;
     z-index: 100;
 }
 
@@ -353,17 +352,19 @@ h1 {
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     padding: 20px;
-    padding-top: 150px;
+    padding-top: 20px;
+    /* Reduced from 150px because parent no longer scrolls over siblings */
     padding-bottom: 150px;
     overflow-y: auto;
     overflow-x: hidden;
-    flex: 1;
+    flex: 1 1 auto;
+    /* Allow growth and auto-scrolling */
     align-content: start;
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    min-height: 0;
     background-color: var(--bg-color);
+    box-sizing: border-box;
 }
 
 .grid-item {
@@ -422,7 +423,8 @@ h1 {
     padding-bottom: 40vh;
     overflow-y: auto;
     overflow-x: hidden;
-    flex: 1;
+    flex: 1 1 auto;
+    /* Allow growth and auto-scrolling */
     font-size: 1.1rem;
     line-height: 1.6;
     user-select: none;
@@ -430,6 +432,8 @@ h1 {
     -moz-user-select: none;
     -ms-user-select: none;
     box-sizing: border-box;
+    position: relative;
+    /* Fixed reference anchor for scrolling */
 }
 
 .verse {

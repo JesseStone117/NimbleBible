@@ -873,7 +873,20 @@ const App = {
             setTimeout(() => {
                 const scrollTarget = targetVerseNum;
                 const el = document.getElementById(`verse-${scrollTarget}`);
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                if (el && this.els.verseContent) {
+                    // Safe scrolling that doesn't trigger mobile browser top-bar hide bugs
+                    // by strictly scrolling the container, not the document.
+                    const container = this.els.verseContent;
+
+                    // Calculate center position relative to the container
+                    const targetTop = el.offsetTop;
+                    const centerOffset = (container.clientHeight / 2) - (el.clientHeight / 2);
+
+                    container.scrollTo({
+                        top: Math.max(0, targetTop - centerOffset),
+                        behavior: 'smooth'
+                    });
+                }
             }, 100);
         }
 
