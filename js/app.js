@@ -653,6 +653,49 @@ const App = {
         }
     },
 
+    rebuildHistoryStack(tab) {
+        // Base case: always start at home in the background stack
+        history.replaceState({
+            view: 'homeView',
+            testament: null,
+            book: null,
+            chapter: null
+        }, '', '');
+
+        if (!tab || (!tab.testament && !tab.bookName)) return;
+
+        // Push bookView (Testament selection)
+        history.pushState({
+            view: 'bookView',
+            testament: tab.testament,
+            book: null,
+            chapter: null
+        }, '', '');
+
+        if (!tab.bookName) return;
+
+        // Push chapterView (Book selected, viewing chapters)
+        history.pushState({
+            view: 'chapterView',
+            testament: tab.testament,
+            book: { name: tab.bookName },
+            chapter: null
+        }, '', '');
+
+        if (!tab.chapterNumber) return;
+
+        // Push verseListView (Chapter selected, viewing verses)
+        history.pushState({
+            view: 'verseListView',
+            testament: tab.testament,
+            book: { name: tab.bookName },
+            chapter: { number: tab.chapterNumber }
+        }, '', '');
+
+        // Note: The final verseView state will be pushed naturally by switchView
+        // inside the openVerseView call later in the chain.
+    },
+
     goBack() {
         // Don't go back if we're already on home
         if (this.state.currentView === 'homeView') {
@@ -1762,11 +1805,13 @@ const App = {
         this.saveStateToLocalStorage(); // Persist
     },
 
-    switchTab(tabId) {
-        if (tabId === this.state.activeTabId) return;
+    switchTab(tabId, restoreHistory = false) {
+        if (tabId === this.state.activeTabId && !restoreHistory) return;
 
-        // Save current tab state
-        this.saveCurrentTabState();
+        // Save current tab state if we aren't bootstrapping
+        if (!restoreHistory) {
+            this.saveCurrentTabState();
+        }
 
         // Switch to new tab
         const tab = this.state.tabs.find(t => t.id === tabId);
@@ -1776,6 +1821,11 @@ const App = {
 
         // Restore tab state
         if (tab.bookName && tab.chapterNumber) {
+            // Rebuild physical browser history tree if requested (e.g. app init)
+            if (restoreHistory) {
+                this.rebuildHistoryStack(tab);
+            }
+
             // Need to restore the full navigation state
             this.state.testament = tab.testament;
 
