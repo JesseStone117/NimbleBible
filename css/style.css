@@ -352,8 +352,8 @@ h1 {
     grid-template-columns: repeat(3, 1fr);
     gap: 10px;
     padding: 20px;
-    padding-top: 20px;
-    /* Reduced from 150px because parent no longer scrolls over siblings */
+    padding-top: 100px;
+    /* Buffer space to prevent finger from hitting header during NimbleNav */
     padding-bottom: 150px;
     overflow-y: auto;
     overflow-x: hidden;
@@ -420,7 +420,10 @@ h1 {
     width: 100%;
     max-width: 100%;
     padding: 20px;
-    padding-bottom: 40vh;
+    padding-top: 50px;
+    /* Buffer space at the top */
+    padding-bottom: 50vh;
+    /* Increase bottom buffer to ensure last verses can be scrolled comfortably to center */
     overflow-y: auto;
     overflow-x: hidden;
     flex: 1 1 auto;
