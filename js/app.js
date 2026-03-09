@@ -142,7 +142,7 @@ const App = {
             tabsBar: document.getElementById('tabs-bar'),
             tabsContainer: document.getElementById('tabs-container'),
             newTabBtn: document.getElementById('new-tab-btn'),
-            copyTabsBtn: document.getElementById('copy-tabs-btn'),
+            tabOptionsBtn: document.getElementById('tab-options-btn'),
 
             // Search elements
             searchModal: document.getElementById('search-modal'),
@@ -211,10 +211,10 @@ const App = {
             this.bindNimbleTrigger(this.els.newTabBtn, { fromNewTab: true }, { skipProgress: true });
         }
 
-        // Copy tabs button
-        if (this.els.copyTabsBtn) {
-            this.els.copyTabsBtn.addEventListener('click', () => {
-                this.copyTabsToClipboard();
+        // Tab options button
+        if (this.els.tabOptionsBtn) {
+            this.els.tabOptionsBtn.addEventListener('click', () => {
+                this.showAllTabsOptionsMenu();
             });
         }
 
@@ -1542,24 +1542,69 @@ const App = {
         document.body.removeChild(textArea);
     },
 
-    copyTabsToClipboard() {
-        if (!this.els.copyTabsBtn) return;
+    showAllTabsOptionsMenu() {
+        if (!this.els.tabOptionsBtn) return;
 
-        // Filter out home tabs
-        const passageTabs = this.state.tabs.filter(t => !this.isHomeTab(t));
-        if (passageTabs.length === 0) return;
+        // Create overlay
+        const overlay = document.createElement('div');
+        overlay.className = 'tab-options-overlay';
+        overlay.innerHTML = `
+            <div class="tab-options-popup">
+                <p>All Tabs Options</p>
+                <div class="tab-options-buttons">
+                    <button class="tab-options-action" id="copy-all-tabs-btn">Copy All Passage References</button>
+                    <button class="tab-options-danger" id="close-all-tabs-btn">Close All Open Tabs</button>
+                    <button class="tab-options-cancel">Cancel</button>
+                </div>
+            </div>
+        `;
 
-        // Map to labels (e.g. GEN1:5-8) and join with commas
-        const textToCopy = passageTabs.map(t => this.getTabLabel(t)).join(', ');
+        // Cancel button
+        overlay.querySelector('.tab-options-cancel').addEventListener('click', () => {
+            document.body.removeChild(overlay);
+        });
 
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-            navigator.clipboard.writeText(textToCopy).catch(err => {
-                console.error('Failed to copy tabs text:', err);
-                this.fallbackCopyText(textToCopy);
-            });
-        } else {
-            this.fallbackCopyText(textToCopy);
-        }
+        // Copy All button
+        overlay.querySelector('#copy-all-tabs-btn').addEventListener('click', () => {
+            const passageTabs = this.state.tabs.filter(t => !this.isHomeTab(t));
+            if (passageTabs.length > 0) {
+                const textToCopy = passageTabs.map(t => this.getTabLabel(t)).join(', ');
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(textToCopy).catch(err => {
+                        console.error('Failed to copy tabs text:', err);
+                        this.fallbackCopyText(textToCopy);
+                    });
+                } else {
+                    this.fallbackCopyText(textToCopy);
+                }
+            }
+            document.body.removeChild(overlay);
+        });
+
+        // Close All button
+        overlay.querySelector('#close-all-tabs-btn').addEventListener('click', () => {
+            // Reset to a single home tab
+            this.state.tabs = [{
+                id: this.state.nextTabId++,
+                testament: null,
+                bookName: null,
+                chapterNumber: null,
+                scrollPosition: 0
+            }];
+            this.state.activeTabId = this.state.tabs[0].id;
+            this.goHome();
+            this.renderTabs();
+            document.body.removeChild(overlay);
+        });
+
+        // Close on overlay click
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                document.body.removeChild(overlay);
+            }
+        });
+
+        document.body.appendChild(overlay);
     },
 
     // === TAB MANAGEMENT ===
@@ -1767,7 +1812,7 @@ const App = {
             pressTimer = setTimeout(() => {
                 if (!hasMoved) {
                     isLongPress = true;
-                    this.showDeleteTabConfirmation(tab);
+                    this.showTabOptionsMenu(tab);
                 }
             }, 600); // 600ms for long press
         };
@@ -1817,27 +1862,44 @@ const App = {
         tabEl.addEventListener('mouseleave', cancelPress);
     },
 
-    showDeleteTabConfirmation(tab) {
+    showTabOptionsMenu(tab) {
         // Create overlay
         const overlay = document.createElement('div');
-        overlay.className = 'delete-tab-overlay';
+        overlay.className = 'tab-options-overlay';
         overlay.innerHTML = `
-            <div class="delete-tab-popup">
-                <p>Delete tab "${this.getTabLabel(tab)}"?</p>
-                <div class="delete-tab-buttons">
-                    <button class="delete-tab-cancel">Cancel</button>
-                    <button class="delete-tab-confirm">Delete</button>
+            <div class="tab-options-popup">
+                <p>Tab: ${this.getTabLabel(tab)}</p>
+                <div class="tab-options-buttons">
+                    <button class="tab-options-action" id="copy-single-tab-btn">Copy Passage Reference</button>
+                    <button class="tab-options-danger" id="close-single-tab-btn">Close Tab</button>
+                    <button class="tab-options-cancel">Cancel</button>
                 </div>
             </div>
         `;
 
         // Cancel button
-        overlay.querySelector('.delete-tab-cancel').addEventListener('click', () => {
+        overlay.querySelector('.tab-options-cancel').addEventListener('click', () => {
             document.body.removeChild(overlay);
         });
 
-        // Delete button
-        overlay.querySelector('.delete-tab-confirm').addEventListener('click', () => {
+        // Copy button
+        overlay.querySelector('#copy-single-tab-btn').addEventListener('click', () => {
+            if (!this.isHomeTab(tab)) {
+                const textToCopy = this.getTabLabel(tab);
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    navigator.clipboard.writeText(textToCopy).catch(err => {
+                        console.error('Failed to copy tab text:', err);
+                        this.fallbackCopyText(textToCopy);
+                    });
+                } else {
+                    this.fallbackCopyText(textToCopy);
+                }
+            }
+            document.body.removeChild(overlay);
+        });
+
+        // Delete (Close) button
+        overlay.querySelector('#close-single-tab-btn').addEventListener('click', () => {
             this.deleteTab(tab.id);
             document.body.removeChild(overlay);
         });
@@ -1889,7 +1951,22 @@ const App = {
                     this.state.book = book;
                     const chapter = book.chapters.find(c => c.number === newActiveTab.chapterNumber);
                     if (chapter) {
-                        this.openVerseView(chapter, 1, true);
+                        // Pass skipAutoScroll=true to prevent auto-scroll to verse
+                        // Restore verse range highlight if this tab had one
+                        const restoreRange = (newActiveTab.verseRangeEnd && newActiveTab.verseNumber && newActiveTab.verseRangeEnd !== newActiveTab.verseNumber)
+                            ? { start: newActiveTab.verseNumber, end: newActiveTab.verseRangeEnd }
+                            : null;
+                        this.openVerseView(chapter, newActiveTab.verseNumber || 1, true, true, restoreRange);
+
+                        // Restore scroll position with smooth animation after view is rendered
+                        if (newActiveTab.scrollPosition !== undefined && this.els.verseContent) {
+                            setTimeout(() => {
+                                this.els.verseContent.scrollTo({
+                                    top: newActiveTab.scrollPosition,
+                                    behavior: 'smooth'
+                                });
+                            }, 50);
+                        }
                     }
                 }
             } else {

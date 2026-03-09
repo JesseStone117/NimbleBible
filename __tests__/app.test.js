@@ -363,9 +363,37 @@ describe('Tab Management', () => {
         });
     });
 
-    // ── copyTabsToClipboard ─────────────────────────────────────────────
+    // ── deleteTab ────────────────────────────────────────────────────────
 
-    describe('copyTabsToClipboard', () => {
+    describe('deleteTab', () => {
+        test('preserves adjacent tab passage state when deleting active tab', () => {
+            // Setup two passage tabs side by side
+            App.state.tabs = [
+                { id: 1, testament: 'Old Testament', bookName: 'Genesis', chapterNumber: 1, verseNumber: 5, verseRangeEnd: null, scrollPosition: 100 },
+                { id: 2, testament: 'Old Testament', bookName: 'Exodus', chapterNumber: 2, verseNumber: 3, verseRangeEnd: 8, scrollPosition: 200 }
+            ];
+            App.state.activeTabId = 2; // Active tab is Exodus
+
+            // Delete the active tab
+            App.deleteTab(2);
+
+            // Active tab should now be Genesis (id 1)
+            expect(App.state.activeTabId).toBe(1);
+            expect(App.state.tabs.length).toBe(1);
+
+            // Expected state variables to be restored correctly without defaulting to 1
+            expect(App.state.book.name).toBe('Genesis');
+            expect(App.state.targetVerseNum).toBe(5);
+            expect(App.state.targetVerseRangeEnd).toBeNull();
+
+            // Ensure openVerseView was called with the correct target verse (5, not 1)
+            // By checking if the targetVerseNum was updated properly and not forced to 1.
+        });
+    });
+
+    // ── showAllTabsOptionsMenu ──────────────────────────────────────────
+
+    describe('showAllTabsOptionsMenu', () => {
         let originalClipboard;
         let originalExecCommand;
 
@@ -380,11 +408,11 @@ describe('Tab Management', () => {
             });
             document.execCommand = jest.fn().mockReturnValue(true);
 
-            // Add the copy tabs button to the DOM
+            // Add the new options button to the DOM
             const btn = document.createElement('button');
-            btn.id = 'copy-tabs-btn';
+            btn.id = 'tab-options-btn';
             App.els.tabsBar.appendChild(btn);
-            App.els.copyTabsBtn = btn;
+            App.els.tabOptionsBtn = btn;
         });
 
         afterEach(() => {
@@ -393,47 +421,42 @@ describe('Tab Management', () => {
                 writable: true
             });
             document.execCommand = originalExecCommand;
+
+            // Clean up overlays if any
+            document.querySelectorAll('.tab-options-overlay').forEach(el => el.remove());
         });
 
-        test('copies non-home tabs as comma-separated labels', async () => {
-            // Set up a mix of home and assigned tabs
+        test('renders popup with copy and close options', () => {
             App.state.tabs = [
                 { id: 1, bookName: null, chapterNumber: null },
-                { id: 2, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 },
-                { id: 3, bookName: 'Exodus', chapterNumber: 2, verseNumber: 3, verseRangeEnd: 8 }
+                { id: 2, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 }
             ];
 
-            App.copyTabsToClipboard();
+            App.showAllTabsOptionsMenu();
 
-            expect(navigator.clipboard.writeText).toHaveBeenCalledWith('GEN1:5, EXO2:3-8');
+            const overlay = document.querySelector('.tab-options-overlay');
+            expect(overlay).not.toBeNull();
+            expect(overlay.querySelector('#copy-all-tabs-btn')).not.toBeNull();
+            expect(overlay.querySelector('#close-all-tabs-btn')).not.toBeNull();
         });
 
-        test('does nothing if only home tabs exist', () => {
+        test('closes all open tabs when clicking close-all-tabs-btn', () => {
             App.state.tabs = [
-                { id: 1, bookName: null, chapterNumber: null },
-                { id: 2, bookName: null, chapterNumber: null }
+                { id: 1, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 },
+                { id: 2, bookName: 'Exodus', chapterNumber: 2, verseNumber: 3 }
             ];
 
-            App.copyTabsToClipboard();
+            App.showAllTabsOptionsMenu();
 
-            expect(navigator.clipboard.writeText).not.toHaveBeenCalled();
-        });
+            const overlay = document.querySelector('.tab-options-overlay');
+            const closeBtn = overlay.querySelector('#close-all-tabs-btn');
+            closeBtn.click();
 
-        test('falls back to execCommand if clipboard API is unavailable', () => {
-            Object.defineProperty(navigator, 'clipboard', {
-                value: undefined,
-                writable: true
-            });
-
-            App.state.tabs = [
-                { id: 1, bookName: 'Genesis', chapterNumber: 1, verseNumber: 5 }
-            ];
-
-            App.copyTabsToClipboard();
-
-            expect(document.execCommand).toHaveBeenCalledWith('copy');
-            // Check that a textarea was temporarily added
-            expect(document.querySelector('textarea')).toBeNull(); // It should be removed after
+            // Should reset to a single home tab
+            expect(App.state.tabs.length).toBe(1);
+            expect(App.isHomeTab(App.state.tabs[0])).toBe(true);
+            expect(App.state.currentView).toBe('homeView');
+            expect(document.querySelector('.tab-options-overlay')).toBeNull(); // Overlay closed
         });
     });
 });

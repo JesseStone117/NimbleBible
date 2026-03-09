@@ -845,8 +845,7 @@ h1 {
     color: white;
 }
 
-.new-tab-btn,
-.copy-tabs-btn {
+.tab-options-btn {
     width: 36px;
     height: 36px;
     border-radius: 8px;
@@ -863,18 +862,18 @@ h1 {
     transition: background 0.2s, color 0.2s;
 }
 
-.copy-tabs-btn svg {
+.tab-options-btn svg {
     display: block;
 }
 
 .new-tab-btn:hover,
-.copy-tabs-btn:hover {
+.tab-options-btn:hover {
     background: rgba(255, 255, 255, 0.2);
     color: white;
 }
 
 .new-tab-btn:active,
-.copy-tabs-btn:active {
+.tab-options-btn:active {
     transform: scale(0.95);
 }
 
@@ -911,8 +910,8 @@ h1 {
     display: flex;
 }
 
-/* Delete Tab Confirmation Popup */
-.delete-tab-overlay {
+/* Tab Options Popup */
+.tab-options-overlay {
     position: fixed;
     top: 0;
     left: 0;
@@ -925,7 +924,7 @@ h1 {
     z-index: 2000;
 }
 
-.delete-tab-popup {
+.tab-options-popup {
     background: var(--secondary-bg);
     border-radius: 16px;
     padding: 24px;
@@ -936,20 +935,21 @@ h1 {
     border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-.delete-tab-popup p {
+.tab-options-popup p {
     margin: 0 0 20px 0;
     font-size: 1.1rem;
     color: var(--text-color);
 }
 
-.delete-tab-buttons {
+.tab-options-buttons {
     display: flex;
+    flex-direction: column;
     gap: 12px;
-    justify-content: center;
 }
 
-.delete-tab-cancel,
-.delete-tab-confirm {
+.tab-options-action,
+.tab-options-danger,
+.tab-options-cancel {
     padding: 12px 24px;
     border-radius: 8px;
     border: none;
@@ -957,27 +957,38 @@ h1 {
     font-weight: 500;
     cursor: pointer;
     transition: transform 0.1s, background-color 0.2s;
+    width: 100%;
 }
 
-.delete-tab-cancel {
+.tab-options-action {
+    background: var(--accent-color);
+    color: white;
+}
+
+.tab-options-action:hover {
+    background: #2563eb;
+}
+
+.tab-options-cancel {
     background: rgba(255, 255, 255, 0.1);
     color: var(--text-color);
 }
 
-.delete-tab-cancel:hover {
+.tab-options-cancel:hover {
     background: rgba(255, 255, 255, 0.2);
 }
 
-.delete-tab-confirm {
+.tab-options-danger {
     background: #ef4444;
     color: white;
 }
 
-.delete-tab-confirm:hover {
+.tab-options-danger:hover {
     background: #dc2626;
 }
 
-.delete-tab-cancel:active,
-.delete-tab-confirm:active {
+.tab-options-action:active,
+.tab-options-danger:active,
+.tab-options-cancel:active {
     transform: scale(0.95);
 }
