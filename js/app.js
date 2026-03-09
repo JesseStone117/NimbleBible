@@ -59,6 +59,40 @@ const App = {
         '3 John': '3JO', 'Jude': 'JUD', 'Revelation': 'REV'
     },
     searchEventsBound: false,
+    storageKey: 'nimbleBibleState',
+
+    // === LOCAL STORAGE STATE PERSISTENCE ===
+
+    saveStateToLocalStorage() {
+        try {
+            const stateToSave = {
+                tabs: this.state.tabs,
+                activeTabId: this.state.activeTabId,
+                nextTabId: this.state.nextTabId
+            };
+            localStorage.setItem(this.storageKey, JSON.stringify(stateToSave));
+        } catch (error) {
+            console.error('Failed to save state to localStorage:', error);
+        }
+    },
+
+    loadStateFromLocalStorage() {
+        try {
+            const savedData = localStorage.getItem(this.storageKey);
+            if (savedData) {
+                const parsed = JSON.parse(savedData);
+                if (parsed.tabs && parsed.tabs.length > 0) {
+                    this.state.tabs = parsed.tabs;
+                    this.state.activeTabId = parsed.activeTabId;
+                    this.state.nextTabId = parsed.nextTabId;
+                    return true;
+                }
+            }
+        } catch (error) {
+            console.error('Failed to load state from localStorage:', error);
+        }
+        return false;
+    },
 
     async init() {
         const loaded = await DataManager.init();
@@ -70,20 +104,32 @@ const App = {
         this.cacheElements();
         this.bindEvents();
         this.setupHistory();
-        this.renderHome();
 
-        // Create initial Home tab
-        if (this.state.tabs.length === 0) {
-            this.state.tabs.push({
-                id: this.state.nextTabId++,
-                testament: null,
-                bookName: null,
-                chapterNumber: null,
-                verseNumber: null,
-                scrollPosition: 0
-            });
-            this.state.activeTabId = this.state.tabs[0].id;
+        // Attempt to load saved tabs from local storage (if user returns to app)
+        const hasSavedState = this.loadStateFromLocalStorage();
+
+        if (hasSavedState && this.state.tabs.length > 0) {
+            // Render tabs and restore the specific active tab's view
             this.renderTabs();
+            // Automatically switch to the active tab which handles rendering the specific verse hierarchy natively
+            this.switchTab(this.state.activeTabId, true);
+        } else {
+            // New user session: No saved state found
+            this.renderHome();
+
+            // Create initial Home tab
+            if (this.state.tabs.length === 0) {
+                this.state.tabs.push({
+                    id: this.state.nextTabId++,
+                    testament: null,
+                    bookName: null,
+                    chapterNumber: null,
+                    verseNumber: null,
+                    scrollPosition: 0
+                });
+                this.state.activeTabId = this.state.tabs[0].id;
+                this.renderTabs();
+            }
         }
     },
 
@@ -1605,6 +1651,9 @@ const App = {
                 scrollPosition: 0
             }];
             this.state.activeTabId = this.state.tabs[0].id;
+
+            this.saveStateToLocalStorage(); // Persist
+
             this.goHome();
             this.renderTabs();
             document.body.removeChild(overlay);
@@ -1683,6 +1732,8 @@ const App = {
         this.state.tabs.push(newTab);
         this.state.activeTabId = newTab.id;
 
+        this.saveStateToLocalStorage(); // Persist
+
         // Navigate to home
         this.goHome();
         this.renderTabs();
@@ -1707,6 +1758,8 @@ const App = {
 
         // Prevent duplicate home tabs from appearing
         this.dedupeHomeTabs();
+
+        this.saveStateToLocalStorage(); // Persist
     },
 
     switchTab(tabId) {
@@ -1757,6 +1810,7 @@ const App = {
         }
 
         this.renderTabs();
+        this.saveStateToLocalStorage(); // Persist
     },
 
     updateCurrentTabFromNavigation() {
@@ -1988,6 +2042,7 @@ const App = {
         }
 
         this.renderTabs();
+        this.saveStateToLocalStorage(); // Persist
     },
 
     updateTabsBarVisibility() {
