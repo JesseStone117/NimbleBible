@@ -845,6 +845,7 @@ h1 {
     color: white;
 }
 
+.new-tab-btn,
 .tab-options-btn {
     width: 36px;
     height: 36px;

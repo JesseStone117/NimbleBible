@@ -1552,7 +1552,7 @@ const App = {
             <div class="tab-options-popup">
                 <p>All Tabs Options</p>
                 <div class="tab-options-buttons">
-                    <button class="tab-options-action" id="copy-all-tabs-btn">Copy All Passage References</button>
+                    <button class="tab-options-action" id="copy-all-tabs-btn">Copy Passage References</button>
                     <button class="tab-options-danger" id="close-all-tabs-btn">Close All Open Tabs</button>
                     <button class="tab-options-cancel">Cancel</button>
                 </div>
