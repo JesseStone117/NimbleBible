@@ -403,6 +403,8 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         this.state.targetVerseNum = targetVerseNum; // Track for tab labels
         this.state.targetVerseRangeEnd = null; // Reset range end
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
+        const passageRange = highlightRange?.range || null;
+        const passageSegments = passageRange ? this.getPassageSegments(passageRange) : null;
 
         // Reset verse selection
         this.state.verseSelection = {
@@ -413,31 +415,31 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         this.hideToolbar();
 
         this.els.verseContent.innerHTML = '';
-        chapter.verses.forEach(verse => {
-            const p = document.createElement('div');
-            p.className = 'verse';
-            p.id = `verse-${verse.number}`;
-            p.dataset.verseNumber = verse.number;
-            p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
+        if (passageSegments) {
+            this.renderPassageRangeSegments(passageSegments);
+        } else {
+            chapter.verses.forEach(verse => {
+                const p = this.createVerseElement(verse);
 
-            if (!highlightRange && verse.number === targetVerseNum && targetVerseNum !== 1) {
-                // Use nimble target styling for navigated-to verses (not default verse 1)
-                p.classList.add('nimble-target');
-                // After animation completes, switch to visited state with just the stripe
-                setTimeout(() => {
-                    p.classList.remove('nimble-target');
-                    p.classList.add('nimble-target-visited');
-                }, 1000);
-            }
+                if (!highlightRange && verse.number === targetVerseNum && targetVerseNum !== 1) {
+                    // Use nimble target styling for navigated-to verses (not default verse 1)
+                    p.classList.add('nimble-target');
+                    // After animation completes, switch to visited state with just the stripe
+                    setTimeout(() => {
+                        p.classList.remove('nimble-target');
+                        p.classList.add('nimble-target-visited');
+                    }, 1000);
+                }
 
-            // Add verse selection handlers
-            this.bindVerseSelection(p, verse);
-
-            this.els.verseContent.appendChild(p);
-        });
+                this.els.verseContent.appendChild(p);
+            });
+        }
 
         // Apply highlight range if provided (from nimble verse range drag)
-        if (highlightRange) {
+        if (passageRange) {
+            this.state.targetVerseRangeEnd = passageRange.end.verseNumber;
+            this.applyRenderedPassageHighlight();
+        } else if (highlightRange) {
             const rangeStart = Math.min(highlightRange.start, highlightRange.end);
             const rangeEnd = Math.max(highlightRange.start, highlightRange.end);
             this.state.targetVerseRangeEnd = rangeEnd;
@@ -497,5 +499,90 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         if (!skipAutoScroll) {
             this.updateCurrentTabFromNavigation();
         }
+    },
+
+createVerseElement(verse, ref = null) {
+        const p = document.createElement('div');
+        p.className = 'verse';
+        p.id = ref ? `verse-${ref.bookName}-${ref.chapterNumber}-${verse.number}` : `verse-${verse.number}`;
+        p.dataset.verseNumber = verse.number;
+        if (ref) {
+            p.dataset.bookName = ref.bookName;
+            p.dataset.chapterNumber = ref.chapterNumber;
+        }
+        p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
+        this.bindVerseSelection(p, verse);
+        return p;
+    },
+
+getPassageSegments(range) {
+        const normalized = this.normalizePassageRange(range.start, range.end);
+        const books = DataManager.books || [];
+        const startBookIndex = books.findIndex(book => book.name === normalized.start.bookName);
+        const endBookIndex = books.findIndex(book => book.name === normalized.end.bookName);
+        if (startBookIndex === -1 || endBookIndex === -1) return [];
+
+        const segments = [];
+        for (let bookIndex = startBookIndex; bookIndex <= endBookIndex; bookIndex++) {
+            const book = books[bookIndex];
+            const startChapterNumber = book.name === normalized.start.bookName
+                ? normalized.start.chapterNumber
+                : book.chapters[0].number;
+            const endChapterNumber = book.name === normalized.end.bookName
+                ? normalized.end.chapterNumber
+                : book.chapters[book.chapters.length - 1].number;
+
+            book.chapters
+                .filter(chapter => chapter.number >= startChapterNumber && chapter.number <= endChapterNumber)
+                .forEach((segmentChapter) => {
+                    const firstVerse = book.name === normalized.start.bookName && segmentChapter.number === normalized.start.chapterNumber
+                        ? normalized.start.verseNumber
+                        : segmentChapter.verses[0].number;
+                    const lastVerse = book.name === normalized.end.bookName && segmentChapter.number === normalized.end.chapterNumber
+                        ? normalized.end.verseNumber
+                        : segmentChapter.verses[segmentChapter.verses.length - 1].number;
+                    const verses = segmentChapter.verses.filter(verse => verse.number >= firstVerse && verse.number <= lastVerse);
+                    if (verses.length > 0) {
+                        segments.push({ book, chapter: segmentChapter, verses });
+                    }
+                });
+        }
+
+        return segments;
+    },
+
+renderPassageRangeSegments(segments) {
+        segments.forEach((segment, segmentIndex) => {
+            if (segmentIndex > 0) {
+                const heading = document.createElement('div');
+                heading.className = 'passage-chapter-heading';
+                heading.textContent = `${segment.book.name} ${segment.chapter.number}`;
+                this.els.verseContent.appendChild(heading);
+            }
+
+            segment.verses.forEach((verse) => {
+                const ref = {
+                    bookName: segment.book.name,
+                    chapterNumber: segment.chapter.number
+                };
+                this.els.verseContent.appendChild(this.createVerseElement(verse, ref));
+            });
+        });
+    },
+
+applyRenderedPassageHighlight() {
+        const verses = Array.from(this.els.verseContent.querySelectorAll('.verse'));
+        verses.forEach((el, index) => {
+            el.classList.add('nimble-target-visited', 'passage-selected');
+            if (verses.length === 1) {
+                el.classList.add('passage-start', 'passage-end');
+            } else if (index === 0) {
+                el.classList.add('passage-start');
+            } else if (index === verses.length - 1) {
+                el.classList.add('passage-end');
+            } else {
+                el.classList.add('passage-middle');
+            }
+        });
     }
 };

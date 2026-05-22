@@ -426,7 +426,8 @@ endNimbleMode() {
                         normalizedRange.start.chapterNumber === normalizedRange.end.chapterNumber;
                     this.openVerseView(startChapter, normalizedRange.start.verseNumber, false, false, {
                         start: normalizedRange.start.verseNumber,
-                        end: sameChapter ? normalizedRange.end.verseNumber : startChapter.verses[startChapter.verses.length - 1].number
+                        end: sameChapter ? normalizedRange.end.verseNumber : startChapter.verses[startChapter.verses.length - 1].number,
+                        range: normalizedRange
                     });
                     this.state.targetVerseRangeEnd = normalizedRange.end.verseNumber;
                     const activeTab = this.state.tabs.find(tab => tab.id === this.state.activeTabId);

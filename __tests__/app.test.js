@@ -971,6 +971,25 @@ describe('Navigation Flow', () => {
             expect(el.classList.contains('nimble-target')).toBe(false);
             expect(el.classList.contains('nimble-target-visited')).toBe(true);
         });
+
+        test('renders passage ranges that continue into the next chapter', () => {
+            App.state.testament = 'Old Testament';
+            App.state.book = mockBook;
+
+            App.openVerseView(mockChapter, 7, false, false, {
+                start: 7,
+                end: 8,
+                range: {
+                    start: { testament: 'Old Testament', bookName: 'Genesis', chapterNumber: 1, verseNumber: 7 },
+                    end: { testament: 'Old Testament', bookName: 'Genesis', chapterNumber: 2, verseNumber: 1 },
+                },
+            });
+
+            const verseEls = document.querySelectorAll('.verse');
+            expect(verseEls.length).toBe(3);
+            expect(document.querySelector('.passage-chapter-heading').textContent).toBe('Genesis 2');
+            expect(Array.from(verseEls).every((el) => el.classList.contains('passage-selected'))).toBe(true);
+        });
     });
 
     describe('goHome', () => {

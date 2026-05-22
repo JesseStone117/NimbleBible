@@ -497,6 +497,15 @@ h1 {
     border-radius: 8px;
 }
 
+.passage-chapter-heading {
+    color: rgba(255, 255, 255, 0.62);
+    font-size: 0.86rem;
+    font-weight: 700;
+    letter-spacing: 0;
+    margin: 18px 0 8px;
+    padding: 0 4px;
+}
+
 /* Nimble navigation target verse - temporary highlight that fades */
 .verse.nimble-target {
     background-color: rgba(255, 255, 255, 0.2);

@@ -368,7 +368,24 @@ switchTab(tabId, restoreHistory = false) {
                     const isCrossChapterRange = tab.endBookName && tab.endChapterNumber &&
                         (tab.endBookName !== tab.bookName || tab.endChapterNumber !== tab.chapterNumber);
                     const restoreRange = isCrossChapterRange
-                        ? { start: tab.verseNumber || 1, end: chapter.verses[chapter.verses.length - 1].number }
+                        ? {
+                            start: tab.verseNumber || 1,
+                            end: chapter.verses[chapter.verses.length - 1].number,
+                            range: this.normalizePassageRange(
+                                {
+                                    testament: tab.testament,
+                                    bookName: tab.bookName,
+                                    chapterNumber: tab.chapterNumber,
+                                    verseNumber: tab.verseNumber || 1
+                                },
+                                {
+                                    testament: tab.testament,
+                                    bookName: tab.endBookName,
+                                    chapterNumber: tab.endChapterNumber,
+                                    verseNumber: tab.endVerseNumber
+                                }
+                            )
+                        }
                         : (tab.verseRangeEnd && tab.verseNumber && tab.verseRangeEnd !== tab.verseNumber)
                             ? { start: tab.verseNumber, end: tab.verseRangeEnd }
                             : null;
@@ -644,7 +661,24 @@ deleteTab(tabId) {
                         const isCrossChapterRange = newActiveTab.endBookName && newActiveTab.endChapterNumber &&
                             (newActiveTab.endBookName !== newActiveTab.bookName || newActiveTab.endChapterNumber !== newActiveTab.chapterNumber);
                         const restoreRange = isCrossChapterRange
-                            ? { start: newActiveTab.verseNumber || 1, end: chapter.verses[chapter.verses.length - 1].number }
+                            ? {
+                                start: newActiveTab.verseNumber || 1,
+                                end: chapter.verses[chapter.verses.length - 1].number,
+                                range: this.normalizePassageRange(
+                                    {
+                                        testament: newActiveTab.testament,
+                                        bookName: newActiveTab.bookName,
+                                        chapterNumber: newActiveTab.chapterNumber,
+                                        verseNumber: newActiveTab.verseNumber || 1
+                                    },
+                                    {
+                                        testament: newActiveTab.testament,
+                                        bookName: newActiveTab.endBookName,
+                                        chapterNumber: newActiveTab.endChapterNumber,
+                                        verseNumber: newActiveTab.endVerseNumber
+                                    }
+                                )
+                            }
                             : (newActiveTab.verseRangeEnd && newActiveTab.verseNumber && newActiveTab.verseRangeEnd !== newActiveTab.verseNumber)
                                 ? { start: newActiveTab.verseNumber, end: newActiveTab.verseRangeEnd }
                                 : null;
