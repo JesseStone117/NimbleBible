@@ -367,6 +367,10 @@ h1 {
     box-sizing: border-box;
 }
 
+#verse-list {
+    padding-bottom: calc(55vh + 150px);
+}
+
 .grid-item {
     background-color: var(--secondary-bg);
     padding: 30px 10px;
