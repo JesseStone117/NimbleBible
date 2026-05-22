@@ -265,5 +265,7 @@ const AudioManager = {
     }
 };
 
+globalThis.AudioManager = AudioManager;
+
 // Initialize on load
 AudioManager.init();

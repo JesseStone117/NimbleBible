@@ -1,3 +1,6 @@
+const DataManager = globalThis.DataManager || (typeof window !== 'undefined' ? window.DataManager : undefined);
+const AudioManager = globalThis.AudioManager || (typeof window !== 'undefined' ? window.AudioManager : undefined);
+
 const App = {
     state: {
         currentView: 'home',
@@ -2493,6 +2496,8 @@ const App = {
         this.renderTabs();
     }
 };
+
+globalThis.App = App;
 
 document.addEventListener('DOMContentLoaded', () => {
     App.init();

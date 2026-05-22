@@ -82,3 +82,5 @@ const DataManager = {
         return book.chapters.find(c => c.number === chapterNum);
     }
 };
+
+globalThis.DataManager = DataManager;
