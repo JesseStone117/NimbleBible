@@ -459,6 +459,29 @@ describe('Tab Management', () => {
             expect(document.querySelector('.tab-options-overlay')).toBeNull(); // Overlay closed
         });
     });
+
+    describe('passage reference tabs', () => {
+        test('parses comma-friendly compact passage references', () => {
+            const range = App.parsePassageReference('GEN1:3-6');
+
+            expect(range.start.bookName).toBe('Genesis');
+            expect(range.start.chapterNumber).toBe(1);
+            expect(range.start.verseNumber).toBe(3);
+            expect(range.end.verseNumber).toBe(6);
+        });
+
+        test('reorders tabs by id', () => {
+            App.state.tabs = [
+                { id: 1, bookName: 'Genesis', chapterNumber: 1 },
+                { id: 2, bookName: 'Genesis', chapterNumber: 2 },
+                { id: 3, bookName: null, chapterNumber: null }
+            ];
+
+            App.reorderTab(1, 2);
+
+            expect(App.state.tabs.map(tab => tab.id)).toEqual([2, 1, 3]);
+        });
+    });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════════

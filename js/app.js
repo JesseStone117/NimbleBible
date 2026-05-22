@@ -14,7 +14,12 @@ const App = {
             progressCleanup: null,
             progressDelayTimer: null,
             verseAnchor: null,
-            verseDragEnd: null
+            verseDragEnd: null,
+            lastPoint: null,
+            scrollCallback: null,
+            rangeStartRef: null,
+            rangeEndRef: null,
+            boundaryNavigationTimer: null
         },
         verseSelection: {
             singleSelected: null,
@@ -26,6 +31,13 @@ const App = {
         activeTabId: null,
         nextTabId: 1,
         toolbarExpanded: false,
+        toolbarPinnedByUser: false,
+        verseRangeDrag: {
+            scrollDirection: 0,
+            animationId: null,
+            anchorVerse: null,
+            lastPoint: null
+        },
         // Search state
         search: {
             query: '',
@@ -236,7 +248,7 @@ const App = {
         // Toolbar toggle handler
         if (this.els.toolbarToggleBtn) {
             this.els.toolbarToggleBtn.addEventListener('click', () => {
-                this.toggleToolbar();
+                this.toggleToolbar(true);
             });
         }
 
@@ -304,12 +316,10 @@ const App = {
             if (duration < 300 && Math.abs(deltaY) > 30) {
                 if (deltaY > 0 && !this.els.audioToolbar.classList.contains('minimized')) {
                     // Swipe down - collapse
-                    this.state.toolbarExpanded = false;
-                    this.els.audioToolbar.classList.add('minimized');
+                    this.setToolbarExpanded(false, true);
                 } else if (deltaY < 0 && this.els.audioToolbar.classList.contains('minimized')) {
                     // Swipe up - expand
-                    this.state.toolbarExpanded = true;
-                    this.els.audioToolbar.classList.remove('minimized');
+                    this.setToolbarExpanded(true, true);
                 }
             }
             isTouchingToolbar = false;
@@ -317,8 +327,15 @@ const App = {
     },
 
     // Toolbar expand/collapse
-    toggleToolbar() {
-        this.state.toolbarExpanded = !this.state.toolbarExpanded;
+    toggleToolbar(userInitiated = false) {
+        this.setToolbarExpanded(!this.state.toolbarExpanded, userInitiated);
+    },
+
+    setToolbarExpanded(expanded, userInitiated = false) {
+        this.state.toolbarExpanded = expanded;
+        if (userInitiated) {
+            this.state.toolbarPinnedByUser = expanded;
+        }
         if (this.els.audioToolbar) {
             if (this.state.toolbarExpanded) {
                 this.els.audioToolbar.classList.remove('minimized');
@@ -326,6 +343,11 @@ const App = {
                 this.els.audioToolbar.classList.add('minimized');
             }
         }
+    },
+
+    hasVerseSelection() {
+        return this.state.verseSelection.singleSelected !== null ||
+            (this.state.verseSelection.rangeStart !== null && this.state.verseSelection.rangeEnd !== null);
     },
 
     // Update copy button disabled state
@@ -946,7 +968,16 @@ const App = {
             for (let i = rangeStart; i <= rangeEnd; i++) {
                 const el = document.getElementById(`verse-${i}`);
                 if (el) {
-                    el.classList.add('nimble-target-visited');
+                    el.classList.add('nimble-target-visited', 'passage-selected');
+                    if (rangeStart === rangeEnd) {
+                        el.classList.add('passage-start', 'passage-end');
+                    } else if (i === rangeStart) {
+                        el.classList.add('passage-start');
+                    } else if (i === rangeEnd) {
+                        el.classList.add('passage-end');
+                    } else {
+                        el.classList.add('passage-middle');
+                    }
                 }
             }
         }
@@ -1046,16 +1077,15 @@ const App = {
 
         // === Verse drag sub-mode: track which verse grid item the finger is over ===
         if (this.state.nimble.verseAnchor !== null) {
-            const target = document.elementFromPoint(touch.clientX, touch.clientY);
-            const itemEl = target?.closest('.grid-item');
-            if (itemEl && itemEl.dataset.type === 'verse' && itemEl.data) {
-                const verseNum = itemEl.data.number;
-                if (verseNum !== this.state.nimble.verseDragEnd) {
-                    this.state.nimble.verseDragEnd = verseNum;
-                    // Highlight range visually on the grid
-                    this.highlightNimbleVerseRange();
-                    if (navigator.vibrate) navigator.vibrate(10);
-                }
+            this.state.nimble.lastPoint = { x: touch.clientX, y: touch.clientY };
+            this.updateNimbleVerseDragFromPoint(touch.clientX, touch.clientY);
+
+            const activeList = document.querySelector('.view.active .grid-list');
+            if (activeList) {
+                this.updateNimbleEdgeScroll(activeList, touch, () => {
+                    const point = this.state.nimble.lastPoint;
+                    if (point) this.updateNimbleVerseDragFromPoint(point.x, point.y);
+                });
             }
             return;
         }
@@ -1126,6 +1156,142 @@ const App = {
             this.highlightItem(itemEl);
             this.startHoverTimer(itemEl);
         }
+    },
+
+    updateNimbleVerseDragFromPoint(x, y) {
+        const target = document.elementFromPoint(x, y);
+        let itemEl = target?.closest('.grid-item');
+
+        if (!itemEl || itemEl.dataset.type !== 'verse') {
+            const activeList = document.querySelector('.view.active .grid-list');
+            if (activeList) {
+                const verseItems = Array.from(activeList.querySelectorAll('.grid-item[data-type="verse"]'));
+                let closest = null;
+                let closestDistance = Infinity;
+                verseItems.forEach((el) => {
+                    const rect = el.getBoundingClientRect();
+                    const centerY = rect.top + rect.height / 2;
+                    const centerX = rect.left + rect.width / 2;
+                    const distance = Math.abs(centerY - y) + Math.abs(centerX - x) * 0.25;
+                    if (distance < closestDistance) {
+                        closest = el;
+                        closestDistance = distance;
+                    }
+                });
+                itemEl = closest;
+            }
+        }
+
+        if (itemEl && itemEl.dataset.type === 'verse' && itemEl.data) {
+            const verseNum = itemEl.data.number;
+            if (verseNum !== this.state.nimble.verseDragEnd) {
+                this.state.nimble.verseDragEnd = verseNum;
+                this.state.nimble.rangeEndRef = this.createPassageRef(this.state.book, this.state.chapter, verseNum);
+                this.highlightNimbleVerseRange();
+                if (navigator.vibrate) navigator.vibrate(10);
+            }
+        }
+    },
+
+    updateNimbleEdgeScroll(activeList, touch, onScroll = null) {
+        const listRect = activeList.getBoundingClientRect();
+        const scrollThreshold = 80;
+
+        let newDirection = 0;
+        if (touch.clientY > listRect.bottom - scrollThreshold) {
+            const depth = (touch.clientY - (listRect.bottom - scrollThreshold)) / scrollThreshold;
+            newDirection = Math.min(1, depth);
+        } else if (touch.clientY < listRect.top + scrollThreshold) {
+            const depth = ((listRect.top + scrollThreshold) - touch.clientY) / scrollThreshold;
+            newDirection = -Math.min(1, depth);
+        }
+
+        this.state.nimble.scrollCallback = onScroll;
+
+        if (newDirection !== 0 && this.state.nimbleScrollDirection === 0) {
+            this.state.nimbleScrollDirection = newDirection;
+            this.startNimbleScroll(activeList);
+        } else if (newDirection === 0 && this.state.nimbleScrollDirection !== 0) {
+            this.stopNimbleScroll();
+        } else {
+            this.state.nimbleScrollDirection = newDirection;
+        }
+
+        if (this.state.nimble.verseAnchor !== null && newDirection !== 0) {
+            this.scheduleNimbleBoundaryNavigation(activeList, newDirection);
+        } else {
+            this.clearNimbleBoundaryNavigationTimer();
+        }
+    },
+
+    scheduleNimbleBoundaryNavigation(activeList, direction) {
+        const atStart = activeList.scrollTop <= 1;
+        const atEnd = activeList.scrollTop + activeList.clientHeight >= activeList.scrollHeight - 1;
+        const shouldNavigate = direction < 0 ? atStart : atEnd;
+
+        if (!shouldNavigate || this.state.nimble.boundaryNavigationTimer) return;
+
+        this.state.nimble.boundaryNavigationTimer = setTimeout(() => {
+            this.state.nimble.boundaryNavigationTimer = null;
+            this.navigateNimbleAdjacentChapter(direction > 0 ? 1 : -1);
+        }, 450);
+    },
+
+    clearNimbleBoundaryNavigationTimer() {
+        if (this.state.nimble.boundaryNavigationTimer) {
+            clearTimeout(this.state.nimble.boundaryNavigationTimer);
+            this.state.nimble.boundaryNavigationTimer = null;
+        }
+    },
+
+    navigateNimbleAdjacentChapter(direction) {
+        const adjacent = this.getAdjacentChapter(direction);
+        if (!adjacent) return;
+
+        this.state.book = adjacent.book;
+        this.state.chapter = adjacent.chapter;
+        this.openVerseList(adjacent.chapter, true);
+
+        const edgeVerse = direction > 0
+            ? adjacent.chapter.verses[0]
+            : adjacent.chapter.verses[adjacent.chapter.verses.length - 1];
+
+        if (!edgeVerse) return;
+
+        this.state.nimble.verseDragEnd = edgeVerse.number;
+        this.state.nimble.rangeEndRef = this.createPassageRef(adjacent.book, adjacent.chapter, edgeVerse.number);
+        setTimeout(() => {
+            this.highlightNimbleVerseRange();
+            const activeList = document.querySelector('.view.active .grid-list');
+            if (activeList && direction < 0) {
+                activeList.scrollTop = activeList.scrollHeight;
+            }
+        }, 0);
+    },
+
+    getAdjacentChapter(direction) {
+        if (!this.state.testament || !this.state.book || !this.state.chapter) return null;
+
+        const books = DataManager.getTestamentBooks(this.state.testament);
+        const bookIndex = books.findIndex(book => book.name === this.state.book.name);
+        if (bookIndex === -1) return null;
+
+        const chapterIndex = this.state.book.chapters.findIndex(chapter => chapter.number === this.state.chapter.number);
+        if (chapterIndex === -1) return null;
+
+        const nextChapter = this.state.book.chapters[chapterIndex + direction];
+        if (nextChapter) {
+            return { book: this.state.book, chapter: nextChapter };
+        }
+
+        const nextBook = books[bookIndex + direction];
+        if (!nextBook) return null;
+
+        const chapter = direction > 0
+            ? nextBook.chapters[0]
+            : nextBook.chapters[nextBook.chapters.length - 1];
+
+        return chapter ? { book: nextBook, chapter } : null;
     },
 
     highlightItem(itemEl) {
@@ -1204,6 +1370,8 @@ const App = {
             // Enter verse drag sub-mode: store anchor and wait for drag or release
             this.state.nimble.verseAnchor = data.number;
             this.state.nimble.verseDragEnd = data.number;
+            this.state.nimble.rangeStartRef = this.createPassageRef(this.state.book, this.state.chapter, data.number);
+            this.state.nimble.rangeEndRef = this.createPassageRef(this.state.book, this.state.chapter, data.number);
             // Mark the anchor item visually
             itemEl.classList.add('nimble-anchor');
         }
@@ -1222,7 +1390,11 @@ const App = {
 
             // Speed is proportional to how far into the threshold zone
             const speed = baseSpeed * Math.abs(this.state.nimbleScrollDirection);
+            const previousScrollTop = list.scrollTop;
             list.scrollTop += speed * Math.sign(this.state.nimbleScrollDirection);
+            if (list.scrollTop !== previousScrollTop && this.state.nimble.scrollCallback) {
+                this.state.nimble.scrollCallback();
+            }
 
             this.state.nimbleScrollAnimationId = requestAnimationFrame(scroll);
         };
@@ -1234,6 +1406,7 @@ const App = {
 
     stopNimbleScroll() {
         this.state.nimbleScrollDirection = 0;
+        this.state.nimble.scrollCallback = null;
         if (this.state.nimbleScrollAnimationId) {
             cancelAnimationFrame(this.state.nimbleScrollAnimationId);
             this.state.nimbleScrollAnimationId = null;
@@ -1244,10 +1417,17 @@ const App = {
         const wasActive = this.state.nimble.active;
         const verseAnchor = this.state.nimble.verseAnchor;
         const verseDragEnd = this.state.nimble.verseDragEnd;
+        const rangeStartRef = this.state.nimble.rangeStartRef;
+        const rangeEndRef = this.state.nimble.rangeEndRef;
 
         this.state.nimble.active = false;
         this.state.nimble.verseAnchor = null;
         this.state.nimble.verseDragEnd = null;
+        this.state.nimble.lastPoint = null;
+        this.state.nimble.scrollCallback = null;
+        this.state.nimble.rangeStartRef = null;
+        this.state.nimble.rangeEndRef = null;
+        this.clearNimbleBoundaryNavigationTimer();
         this.cancelHover();
         this.stopNimbleScroll();
         document.querySelectorAll('.grid-item.active').forEach(el => el.classList.remove('active'));
@@ -1259,7 +1439,28 @@ const App = {
 
         // If we had a verse anchor (long-pressed a verse in the grid)
         if (verseAnchor !== null && this.state.chapter) {
-            if (verseDragEnd !== null && verseDragEnd !== verseAnchor) {
+            if (rangeStartRef && rangeEndRef && !this.isSamePassagePoint(rangeStartRef, rangeEndRef)) {
+                const normalizedRange = this.normalizePassageRange(rangeStartRef, rangeEndRef);
+                const startBook = this.findBook(normalizedRange.start.testament, normalizedRange.start.bookName);
+                const startChapter = startBook?.chapters.find(chapter => chapter.number === normalizedRange.start.chapterNumber);
+                if (startBook && startChapter) {
+                    this.state.testament = normalizedRange.start.testament;
+                    this.state.book = startBook;
+                    const sameChapter = normalizedRange.start.bookName === normalizedRange.end.bookName &&
+                        normalizedRange.start.chapterNumber === normalizedRange.end.chapterNumber;
+                    this.openVerseView(startChapter, normalizedRange.start.verseNumber, false, false, {
+                        start: normalizedRange.start.verseNumber,
+                        end: sameChapter ? normalizedRange.end.verseNumber : startChapter.verses[startChapter.verses.length - 1].number
+                    });
+                    this.state.targetVerseRangeEnd = normalizedRange.end.verseNumber;
+                    const activeTab = this.state.tabs.find(tab => tab.id === this.state.activeTabId);
+                    if (activeTab) {
+                        this.applyPassageRangeToTab(activeTab, normalizedRange);
+                        this.renderTabs();
+                        this.saveStateToLocalStorage();
+                    }
+                }
+            } else if (verseDragEnd !== null && verseDragEnd !== verseAnchor) {
                 // Dragged to a different verse: open with range highlighted
                 const rangeStart = Math.min(verseAnchor, verseDragEnd);
                 const rangeEnd = Math.max(verseAnchor, verseDragEnd);
@@ -1374,17 +1575,14 @@ const App = {
             if (!point) return;
 
             if (isRangeDragActive && rangeAnchorVerse !== null) {
-                const hoveredVerseEl = this.getVerseElementFromPoint(point.x, point.y);
-                if (hoveredVerseEl) {
-                    const hoveredVerseNum = parseInt(hoveredVerseEl.dataset.verseNumber, 10);
-                    if (!Number.isNaN(hoveredVerseNum) && hoveredVerseNum !== lastDraggedVerse) {
-                        this.setVerseRangeSelection(rangeAnchorVerse, hoveredVerseNum);
-                        lastDraggedVerse = hoveredVerseNum;
-                        if (hoveredVerseNum !== rangeAnchorVerse) {
-                            hasDraggedRange = true;
-                        }
-                    }
+                const hoveredVerseNum = this.updateVerseRangeDragFromPoint(rangeAnchorVerse, point);
+                if (hoveredVerseNum !== null && hoveredVerseNum !== lastDraggedVerse) {
+                    lastDraggedVerse = hoveredVerseNum;
                 }
+                if (hoveredVerseNum !== null && hoveredVerseNum !== rangeAnchorVerse) {
+                    hasDraggedRange = true;
+                }
+                this.updateVerseRangeEdgeScroll(rangeAnchorVerse, point);
 
                 if (e.cancelable) {
                     e.preventDefault();
@@ -1422,8 +1620,12 @@ const App = {
                     e.preventDefault();
                 }
                 e.stopPropagation();
+                this.stopVerseRangeEdgeScroll();
 
-                if (!hasDraggedRange && rangeAnchorVerse !== null) {
+                const selection = this.state.verseSelection;
+                const selectedOnlyAnchor = selection.rangeStart === rangeAnchorVerse && selection.rangeEnd === rangeAnchorVerse;
+
+                if ((!hasDraggedRange || selectedOnlyAnchor) && rangeAnchorVerse !== null) {
                     this.clearVerseSelection();
                     const anchorEl = document.getElementById(`verse-${rangeAnchorVerse}`);
                     if (anchorEl) {
@@ -1464,6 +1666,7 @@ const App = {
 
         const handleCancel = () => {
             clearTimeout(pressTimer);
+            this.stopVerseRangeEdgeScroll();
             stopMouseTracking();
             hasMoved = false;
             isLongPress = false;
@@ -1510,6 +1713,109 @@ const App = {
     getVerseElementFromPoint(x, y) {
         const target = document.elementFromPoint(x, y);
         return target ? target.closest('.verse') : null;
+    },
+
+    getClosestVerseElementForPoint(x, y) {
+        const directHit = this.getVerseElementFromPoint(x, y);
+        if (directHit) return directHit;
+
+        const verses = Array.from(document.querySelectorAll('#verse-content .verse'));
+        if (verses.length === 0) return null;
+
+        let closest = null;
+        let closestDistance = Infinity;
+        verses.forEach((el) => {
+            const rect = el.getBoundingClientRect();
+            const centerY = rect.top + rect.height / 2;
+            const horizontallyNear = x >= rect.left - 40 && x <= rect.right + 40;
+            if (!horizontallyNear) return;
+
+            const distance = Math.abs(centerY - y);
+            if (distance < closestDistance) {
+                closest = el;
+                closestDistance = distance;
+            }
+        });
+
+        return closest;
+    },
+
+    updateVerseRangeDragFromPoint(anchorVerse, point) {
+        const hoveredVerseEl = this.getClosestVerseElementForPoint(point.x, point.y);
+        if (!hoveredVerseEl) return null;
+
+        const hoveredVerseNum = parseInt(hoveredVerseEl.dataset.verseNumber, 10);
+        if (Number.isNaN(hoveredVerseNum)) return null;
+
+        this.setVerseRangeSelection(anchorVerse, hoveredVerseNum);
+        return hoveredVerseNum;
+    },
+
+    updateVerseRangeEdgeScroll(anchorVerse, point) {
+        const container = this.els.verseContent;
+        if (!container) return;
+
+        const rect = container.getBoundingClientRect();
+        const scrollThreshold = 90;
+        let direction = 0;
+
+        if (point.y > rect.bottom - scrollThreshold) {
+            const depth = (point.y - (rect.bottom - scrollThreshold)) / scrollThreshold;
+            direction = Math.min(1, depth);
+        } else if (point.y < rect.top + scrollThreshold) {
+            const depth = ((rect.top + scrollThreshold) - point.y) / scrollThreshold;
+            direction = -Math.min(1, depth);
+        }
+
+        this.state.verseRangeDrag.anchorVerse = anchorVerse;
+        this.state.verseRangeDrag.lastPoint = point;
+        this.state.verseRangeDrag.scrollDirection = direction;
+
+        if (direction !== 0 && !this.state.verseRangeDrag.animationId) {
+            this.startVerseRangeEdgeScroll();
+        } else if (direction === 0) {
+            this.stopVerseRangeEdgeScroll(false);
+        }
+    },
+
+    startVerseRangeEdgeScroll() {
+        const scroll = () => {
+            const dragState = this.state.verseRangeDrag;
+            const container = this.els.verseContent;
+
+            if (!container || dragState.scrollDirection === 0 || !dragState.lastPoint || dragState.anchorVerse === null) {
+                dragState.animationId = null;
+                return;
+            }
+
+            const baseSpeed = 12;
+            const previousScrollTop = container.scrollTop;
+            const speed = baseSpeed * Math.abs(dragState.scrollDirection);
+            container.scrollTop += speed * Math.sign(dragState.scrollDirection);
+
+            if (container.scrollTop !== previousScrollTop) {
+                this.updateVerseRangeDragFromPoint(dragState.anchorVerse, dragState.lastPoint);
+            }
+
+            dragState.animationId = requestAnimationFrame(scroll);
+        };
+
+        this.state.verseRangeDrag.animationId = requestAnimationFrame(scroll);
+    },
+
+    stopVerseRangeEdgeScroll(resetPoint = true) {
+        const dragState = this.state.verseRangeDrag;
+        dragState.scrollDirection = 0;
+
+        if (dragState.animationId) {
+            cancelAnimationFrame(dragState.animationId);
+            dragState.animationId = null;
+        }
+
+        if (resetPoint) {
+            dragState.anchorVerse = null;
+            dragState.lastPoint = null;
+        }
     },
 
     setVerseRangeSelection(anchorVerse, endVerse) {
@@ -1562,7 +1868,7 @@ const App = {
     updateVerseRangeSelection() {
         // Clear all selections first
         document.querySelectorAll('.verse').forEach(el => {
-            el.classList.remove('selected', 'range-selected');
+            el.classList.remove('selected', 'range-selected', 'range-start', 'range-middle', 'range-end');
         });
 
         const start = this.state.verseSelection.rangeStart;
@@ -1573,6 +1879,15 @@ const App = {
                 const el = document.getElementById(`verse-${i}`);
                 if (el) {
                     el.classList.add('range-selected');
+                    if (start === end) {
+                        el.classList.add('range-start', 'range-end');
+                    } else if (i === start) {
+                        el.classList.add('range-start');
+                    } else if (i === end) {
+                        el.classList.add('range-end');
+                    } else {
+                        el.classList.add('range-middle');
+                    }
                 }
             }
         }
@@ -1580,7 +1895,7 @@ const App = {
 
     clearVerseSelection() {
         document.querySelectorAll('.verse').forEach(el => {
-            el.classList.remove('selected', 'range-selected');
+            el.classList.remove('selected', 'range-selected', 'range-start', 'range-middle', 'range-end');
         });
         this.state.verseSelection = {
             singleSelected: null,
@@ -1593,11 +1908,17 @@ const App = {
     showToolbar() {
         // Update copy button state when showing toolbar context
         this.updateCopyButtonState();
+        if (this.hasVerseSelection()) {
+            this.setToolbarExpanded(true, false);
+        }
     },
 
     hideToolbar() {
         // Update copy button state (will disable it)
         this.updateCopyButtonState();
+        if (!this.hasVerseSelection() && !this.state.toolbarPinnedByUser) {
+            this.setToolbarExpanded(false, false);
+        }
     },
 
     copySelectedVerses() {
@@ -1657,6 +1978,8 @@ const App = {
             <div class="tab-options-popup">
                 <p>All Tabs Options</p>
                 <div class="tab-options-buttons">
+                    <textarea id="passage-tabs-input" class="passage-tabs-input" placeholder="John 3:16, Romans 8:1-4"></textarea>
+                    <button class="tab-options-action" id="open-passage-tabs-btn">Open References in Tabs</button>
                     <button class="tab-options-action" id="copy-all-tabs-btn">Copy Passage References</button>
                     <button class="tab-options-danger" id="close-all-tabs-btn">Close All Open Tabs</button>
                     <button class="tab-options-cancel">Cancel</button>
@@ -1667,6 +1990,14 @@ const App = {
         // Cancel button
         overlay.querySelector('.tab-options-cancel').addEventListener('click', () => {
             document.body.removeChild(overlay);
+        });
+
+        overlay.querySelector('#open-passage-tabs-btn').addEventListener('click', () => {
+            const input = overlay.querySelector('#passage-tabs-input');
+            const opened = this.openPassageReferencesInTabs(input.value);
+            if (opened > 0) {
+                document.body.removeChild(overlay);
+            }
         });
 
         // Copy All button
@@ -1721,6 +2052,55 @@ const App = {
         return this.bookAbbreviations[bookName] || bookName.substring(0, 3).toUpperCase();
     },
 
+    createPassageRef(book, chapter, verseNumber) {
+        if (!book || !chapter || !verseNumber) return null;
+        return {
+            testament: this.state.testament,
+            bookName: book.name,
+            chapterNumber: chapter.number,
+            verseNumber
+        };
+    },
+
+    findBook(testament, bookName) {
+        if (!testament || !bookName) return null;
+        return DataManager.getTestamentBooks(testament).find(book => book.name === bookName) || null;
+    },
+
+    isSamePassagePoint(a, b) {
+        return !!a && !!b &&
+            a.testament === b.testament &&
+            a.bookName === b.bookName &&
+            a.chapterNumber === b.chapterNumber &&
+            a.verseNumber === b.verseNumber;
+    },
+
+    comparePassageRefs(a, b) {
+        const books = DataManager.books || [];
+        const bookA = books.findIndex(book => book.name === a.bookName);
+        const bookB = books.findIndex(book => book.name === b.bookName);
+        if (bookA !== bookB) return bookA - bookB;
+        if (a.chapterNumber !== b.chapterNumber) return a.chapterNumber - b.chapterNumber;
+        return a.verseNumber - b.verseNumber;
+    },
+
+    normalizePassageRange(start, end) {
+        return this.comparePassageRefs(start, end) <= 0
+            ? { start, end }
+            : { start: end, end: start };
+    },
+
+    applyPassageRangeToTab(tab, range) {
+        tab.testament = range.start.testament;
+        tab.bookName = range.start.bookName;
+        tab.chapterNumber = range.start.chapterNumber;
+        tab.verseNumber = range.start.verseNumber;
+        tab.verseRangeEnd = range.end.verseNumber;
+        tab.endBookName = range.end.bookName;
+        tab.endChapterNumber = range.end.chapterNumber;
+        tab.endVerseNumber = range.end.verseNumber;
+    },
+
     isHomeTab(tab) {
         return !!tab && !tab.bookName && !tab.chapterNumber;
     },
@@ -1744,11 +2124,121 @@ const App = {
         let label = `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
         if (tab.verseNumber) {
             label += `:${tab.verseNumber}`;
-            if (tab.verseRangeEnd && tab.verseRangeEnd !== tab.verseNumber) {
+            if (tab.endBookName && tab.endChapterNumber && tab.endVerseNumber &&
+                (tab.endBookName !== tab.bookName || tab.endChapterNumber !== tab.chapterNumber)) {
+                const endBook = tab.endBookName !== tab.bookName
+                    ? `${this.getBookAbbreviation(tab.endBookName)}${tab.endChapterNumber}`
+                    : `${tab.endChapterNumber}`;
+                label += `-${endBook}:${tab.endVerseNumber}`;
+            } else if (tab.verseRangeEnd && tab.verseRangeEnd !== tab.verseNumber) {
                 label += `-${tab.verseRangeEnd}`;
             }
         }
         return label;
+    },
+
+    openPassageReferencesInTabs(input) {
+        const refs = (input || '')
+            .split(',')
+            .map(ref => ref.trim())
+            .filter(Boolean)
+            .map(ref => this.parsePassageReference(ref))
+            .filter(Boolean);
+
+        if (refs.length === 0) return 0;
+
+        this.saveCurrentTabState();
+        this.state.tabs = this.state.tabs.filter(tab => !this.isHomeTab(tab));
+
+        refs.forEach((range) => {
+            const tab = {
+                id: this.state.nextTabId++,
+                scrollPosition: 0
+            };
+            this.applyPassageRangeToTab(tab, range);
+            this.state.tabs.push(tab);
+        });
+
+        this.state.activeTabId = this.state.tabs[this.state.tabs.length - refs.length].id;
+        this.switchTab(this.state.activeTabId, true);
+        this.renderTabs();
+        this.saveStateToLocalStorage();
+        return refs.length;
+    },
+
+    parsePassageReference(reference) {
+        const raw = (reference || '').trim();
+        if (!raw) return null;
+
+        const match = this.matchBookFromReference(raw);
+        if (!match) return null;
+
+        const startBook = match.book;
+        const rest = raw.slice(match.length).trim();
+        const refMatch = rest.match(/^(\d+)\s*:?\s*(\d+)(?:\s*-\s*(?:(\d+)\s*:)?\s*(\d+))?$/);
+        if (!refMatch) return null;
+
+        const startChapter = parseInt(refMatch[1], 10);
+        const startVerse = parseInt(refMatch[2], 10);
+        const endChapter = refMatch[3] ? parseInt(refMatch[3], 10) : startChapter;
+        const endVerse = refMatch[4] ? parseInt(refMatch[4], 10) : startVerse;
+        const testament = this.getTestamentForBook(startBook.name);
+
+        const start = {
+            testament,
+            bookName: startBook.name,
+            chapterNumber: startChapter,
+            verseNumber: startVerse
+        };
+        const end = {
+            testament,
+            bookName: startBook.name,
+            chapterNumber: endChapter,
+            verseNumber: endVerse
+        };
+
+        if (!this.isValidPassageRef(start) || !this.isValidPassageRef(end)) return null;
+        return this.normalizePassageRange(start, end);
+    },
+
+    matchBookFromReference(reference) {
+        const compactReference = reference.toLowerCase().replace(/\s+/g, '');
+        const candidates = (DataManager.books || [])
+            .flatMap(book => [
+                { book, label: book.name },
+                { book, label: this.getBookAbbreviation(book.name) }
+            ])
+            .sort((a, b) => b.label.length - a.label.length);
+
+        for (const candidate of candidates) {
+            const compactLabel = candidate.label.toLowerCase().replace(/\s+/g, '');
+            if (compactReference.startsWith(compactLabel)) {
+                const length = this.getOriginalPrefixLength(reference, compactLabel);
+                return { book: candidate.book, length };
+            }
+        }
+
+        return null;
+    },
+
+    getOriginalPrefixLength(reference, compactLabel) {
+        let consumed = 0;
+        for (let i = 0; i < reference.length; i++) {
+            if (reference[i] !== ' ') consumed++;
+            if (consumed === compactLabel.length) return i + 1;
+        }
+        return compactLabel.length;
+    },
+
+    getTestamentForBook(bookName) {
+        const index = (DataManager.books || []).findIndex(book => book.name === bookName);
+        return index >= 0 && index < 39 ? 'Old Testament' : 'New Testament';
+    },
+
+    isValidPassageRef(ref) {
+        const book = this.findBook(ref.testament, ref.bookName);
+        const chapter = book?.chapters.find(ch => ch.number === ref.chapterNumber);
+        return !!chapter && chapter.verses.some(verse => verse.number === ref.verseNumber);
     },
 
     createNewTab() {
@@ -1796,6 +2286,11 @@ const App = {
         currentTab.chapterNumber = this.state.chapter?.number || null;
         currentTab.verseNumber = this.state.targetVerseNum || null;
         currentTab.verseRangeEnd = this.state.targetVerseRangeEnd || null;
+        if (!currentTab.endBookName || currentTab.bookName === currentTab.endBookName && currentTab.chapterNumber === currentTab.endChapterNumber) {
+            currentTab.endBookName = currentTab.bookName;
+            currentTab.endChapterNumber = currentTab.chapterNumber;
+            currentTab.endVerseNumber = currentTab.verseRangeEnd || currentTab.verseNumber;
+        }
 
         // Save scroll position if in verse view
         if (this.state.currentView === 'verseView' && this.els.verseContent) {
@@ -1841,19 +2336,23 @@ const App = {
                 if (chapter) {
                     // Pass skipAutoScroll=true to prevent auto-scroll to verse
                     // Restore verse range highlight if this tab had one
-                    const restoreRange = (tab.verseRangeEnd && tab.verseNumber && tab.verseRangeEnd !== tab.verseNumber)
-                        ? { start: tab.verseNumber, end: tab.verseRangeEnd }
-                        : null;
+                    const isCrossChapterRange = tab.endBookName && tab.endChapterNumber &&
+                        (tab.endBookName !== tab.bookName || tab.endChapterNumber !== tab.chapterNumber);
+                    const restoreRange = isCrossChapterRange
+                        ? { start: tab.verseNumber || 1, end: chapter.verses[chapter.verses.length - 1].number }
+                        : (tab.verseRangeEnd && tab.verseNumber && tab.verseRangeEnd !== tab.verseNumber)
+                            ? { start: tab.verseNumber, end: tab.verseRangeEnd }
+                            : null;
                     this.openVerseView(chapter, tab.verseNumber || 1, true, true, restoreRange);
 
-                    // Restore scroll position with smooth animation after view is rendered
+                    // Restore scroll position immediately; tab switches should feel like returning to the same page.
                     if (tab.scrollPosition !== undefined && this.els.verseContent) {
                         setTimeout(() => {
                             this.els.verseContent.scrollTo({
                                 top: tab.scrollPosition,
-                                behavior: 'smooth'
+                                behavior: 'auto'
                             });
-                        }, 50);
+                        }, 0);
                     }
                 }
             }
@@ -1896,6 +2395,7 @@ const App = {
             const tabEl = document.createElement('button');
             tabEl.className = 'tab-item' + (tab.id === this.state.activeTabId ? ' active' : '');
             tabEl.textContent = this.getTabLabel(tab);
+            tabEl.dataset.tabId = tab.id;
 
             // Single tap to switch
             tabEl.addEventListener('click', () => this.switchTab(tab.id));
@@ -1909,9 +2409,23 @@ const App = {
         this.updateTabsBarVisibility();
     },
 
+    reorderTab(sourceTabId, targetTabId) {
+        const sourceIndex = this.state.tabs.findIndex(tab => tab.id === sourceTabId);
+        const targetIndex = this.state.tabs.findIndex(tab => tab.id === targetTabId);
+        if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) return false;
+
+        const [tab] = this.state.tabs.splice(sourceIndex, 1);
+        this.state.tabs.splice(targetIndex, 0, tab);
+        this.renderTabs();
+        this.saveStateToLocalStorage();
+        return true;
+    },
+
     bindTabLongPress(tabEl, tab) {
         let pressTimer = null;
         let isLongPress = false;
+        let isDragging = false;
+        let didReorder = false;
         let startX = 0;
         let startY = 0;
         let hasMoved = false;
@@ -1932,7 +2446,10 @@ const App = {
             pressTimer = setTimeout(() => {
                 if (!hasMoved) {
                     isLongPress = true;
-                    this.showTabOptionsMenu(tab);
+                    isDragging = true;
+                    didReorder = false;
+                    tabEl.classList.add('dragging');
+                    if (navigator.vibrate) navigator.vibrate(20);
                 }
             }, 600); // 600ms for long press
         };
@@ -1952,6 +2469,19 @@ const App = {
             const deltaX = Math.abs(currentX - startX);
             const deltaY = Math.abs(currentY - startY);
 
+            if (isDragging) {
+                const target = document.elementFromPoint(currentX, currentY);
+                const targetTab = target?.closest('.tab-item');
+                if (targetTab && targetTab.dataset.tabId) {
+                    const targetTabId = parseInt(targetTab.dataset.tabId, 10);
+                    if (targetTabId !== tab.id && this.reorderTab(tab.id, targetTabId)) {
+                        didReorder = true;
+                    }
+                }
+                if (e.cancelable) e.preventDefault();
+                return;
+            }
+
             // If moved more than 10px, consider it scrolling/swiping
             if (deltaX > 10 || deltaY > 10) {
                 hasMoved = true;
@@ -1964,12 +2494,21 @@ const App = {
             if (isLongPress) {
                 e.preventDefault();
                 e.stopPropagation();
+                tabEl.classList.remove('dragging');
+                if (!didReorder) {
+                    this.showTabOptionsMenu(tab);
+                }
             }
+            isDragging = false;
+            didReorder = false;
         };
 
         const cancelPress = () => {
             clearTimeout(pressTimer);
+            tabEl.classList.remove('dragging');
             hasMoved = false;
+            isDragging = false;
+            didReorder = false;
         };
 
         tabEl.addEventListener('touchstart', startPress, { passive: true });
@@ -2073,19 +2612,23 @@ const App = {
                     if (chapter) {
                         // Pass skipAutoScroll=true to prevent auto-scroll to verse
                         // Restore verse range highlight if this tab had one
-                        const restoreRange = (newActiveTab.verseRangeEnd && newActiveTab.verseNumber && newActiveTab.verseRangeEnd !== newActiveTab.verseNumber)
-                            ? { start: newActiveTab.verseNumber, end: newActiveTab.verseRangeEnd }
-                            : null;
+                        const isCrossChapterRange = newActiveTab.endBookName && newActiveTab.endChapterNumber &&
+                            (newActiveTab.endBookName !== newActiveTab.bookName || newActiveTab.endChapterNumber !== newActiveTab.chapterNumber);
+                        const restoreRange = isCrossChapterRange
+                            ? { start: newActiveTab.verseNumber || 1, end: chapter.verses[chapter.verses.length - 1].number }
+                            : (newActiveTab.verseRangeEnd && newActiveTab.verseNumber && newActiveTab.verseRangeEnd !== newActiveTab.verseNumber)
+                                ? { start: newActiveTab.verseNumber, end: newActiveTab.verseRangeEnd }
+                                : null;
                         this.openVerseView(chapter, newActiveTab.verseNumber || 1, true, true, restoreRange);
 
-                        // Restore scroll position with smooth animation after view is rendered
+                        // Restore scroll position immediately; tab switches should feel like returning to the same page.
                         if (newActiveTab.scrollPosition !== undefined && this.els.verseContent) {
                             setTimeout(() => {
                                 this.els.verseContent.scrollTo({
                                     top: newActiveTab.scrollPosition,
-                                    behavior: 'smooth'
+                                    behavior: 'auto'
                                 });
-                            }, 50);
+                            }, 0);
                         }
                     }
                 }
