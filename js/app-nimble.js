@@ -205,12 +205,32 @@ scheduleNimbleBoundaryNavigation(activeList, direction) {
         const atEnd = activeList.scrollTop + activeList.clientHeight >= activeList.scrollHeight - 1;
         const shouldNavigate = direction < 0 ? atStart : atEnd;
 
-        if (!shouldNavigate || this.state.nimble.boundaryNavigationTimer) return;
+        if (!shouldNavigate) {
+            this.clearNimbleBoundaryNavigationTimer();
+            return;
+        }
+
+        const normalizedDirection = direction > 0 ? 1 : -1;
+        const adjacent = this.getAdjacentChapter(normalizedDirection);
+        if (!adjacent) {
+            this.showNimbleBoundaryHint(normalizedDirection, null);
+            return;
+        }
+
+        if (this.state.nimble.boundaryNavigationTimer &&
+            this.state.nimble.boundaryNavigationDirection === normalizedDirection) {
+            return;
+        }
+
+        this.clearNimbleBoundaryNavigationTimer();
+        this.showNimbleBoundaryHint(normalizedDirection, adjacent);
+        this.state.nimble.boundaryNavigationDirection = normalizedDirection;
 
         this.state.nimble.boundaryNavigationTimer = setTimeout(() => {
             this.state.nimble.boundaryNavigationTimer = null;
-            this.navigateNimbleAdjacentChapter(direction > 0 ? 1 : -1);
-        }, 450);
+            this.hideNimbleBoundaryHint();
+            this.navigateNimbleAdjacentChapter(normalizedDirection);
+        }, 900);
     },
 
 clearNimbleBoundaryNavigationTimer() {
@@ -218,6 +238,52 @@ clearNimbleBoundaryNavigationTimer() {
             clearTimeout(this.state.nimble.boundaryNavigationTimer);
             this.state.nimble.boundaryNavigationTimer = null;
         }
+        this.state.nimble.boundaryNavigationDirection = 0;
+        this.hideNimbleBoundaryHint();
+    },
+
+showNimbleBoundaryHint(direction, adjacent) {
+        const activeView = document.querySelector('.view.active');
+        if (!activeView) return;
+
+        let hint = this.state.nimble.boundaryNavigationHint;
+        if (!hint) {
+            hint = document.createElement('div');
+            hint.className = 'nimble-boundary-hint';
+            hint.innerHTML = '<span class="nimble-boundary-hint__text"></span><span class="nimble-boundary-hint__bar"></span>';
+            this.state.nimble.boundaryNavigationHint = hint;
+        }
+
+        const destination = adjacent
+            ? `${adjacent.book.name} ${adjacent.chapter.number}`
+            : null;
+        const directionLabel = direction > 0 ? 'next' : 'previous';
+        const text = destination
+            ? `Hold to extend to ${destination}`
+            : `No ${directionLabel} chapter`;
+
+        hint.querySelector('.nimble-boundary-hint__text').textContent = text;
+        hint.classList.toggle('is-disabled', !adjacent);
+        hint.classList.toggle('at-top', direction < 0);
+        hint.classList.toggle('at-bottom', direction > 0);
+
+        if (hint.parentNode !== activeView) {
+            hint.remove();
+            activeView.appendChild(hint);
+        }
+
+        hint.classList.remove('is-active');
+        hint.getBoundingClientRect();
+        hint.classList.add('is-active');
+    },
+
+hideNimbleBoundaryHint() {
+        const hint = this.state.nimble.boundaryNavigationHint;
+        if (!hint) return;
+
+        hint.classList.remove('is-active');
+        hint.remove();
+        this.state.nimble.boundaryNavigationHint = null;
     },
 
 navigateNimbleAdjacentChapter(direction) {
@@ -403,6 +469,7 @@ endNimbleMode() {
         this.state.nimble.scrollCallback = null;
         this.state.nimble.rangeStartRef = null;
         this.state.nimble.rangeEndRef = null;
+        this.hideNimbleBoundaryHint();
         this.clearNimbleBoundaryNavigationTimer();
         this.cancelHover();
         this.stopNimbleScroll();

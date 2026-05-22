@@ -415,6 +415,77 @@ h1 {
     z-index: 1;
 }
 
+.nimble-boundary-hint {
+    position: absolute;
+    left: 16px;
+    right: 16px;
+    z-index: 150;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: rgba(30, 30, 30, 0.94);
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+    color: var(--text-color);
+    font-size: 0.9rem;
+    font-weight: 650;
+    text-align: center;
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.nimble-boundary-hint.at-top {
+    top: 72px;
+    transform: translateY(-8px);
+}
+
+.nimble-boundary-hint.at-bottom {
+    bottom: calc(66px + var(--safe-area-bottom));
+}
+
+.nimble-boundary-hint.is-active {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.nimble-boundary-hint__bar {
+    height: 4px;
+    width: 100%;
+    border-radius: 999px;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.nimble-boundary-hint__bar::before {
+    content: "";
+    display: block;
+    width: 100%;
+    height: 100%;
+    background: var(--accent-color);
+    transform: scaleX(0);
+    transform-origin: left center;
+    animation: nimble-boundary-fill 0.9s linear forwards;
+}
+
+.nimble-boundary-hint.is-disabled .nimble-boundary-hint__bar::before {
+    animation: none;
+    transform: scaleX(0);
+}
+
+.nimble-boundary-hint.is-disabled {
+    color: rgba(255, 255, 255, 0.62);
+}
+
+@keyframes nimble-boundary-fill {
+    to {
+        transform: scaleX(1);
+    }
+}
+
 /* Verse View */
 #verse-content {
     width: 100%;

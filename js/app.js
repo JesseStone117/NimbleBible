@@ -19,7 +19,9 @@ state: {
             scrollCallback: null,
             rangeStartRef: null,
             rangeEndRef: null,
-            boundaryNavigationTimer: null
+            boundaryNavigationTimer: null,
+            boundaryNavigationDirection: 0,
+            boundaryNavigationHint: null
         },
         verseSelection: {
             singleSelected: null,

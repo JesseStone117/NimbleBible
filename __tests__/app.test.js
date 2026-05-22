@@ -172,6 +172,13 @@ function resetApp() {
         progressDelayTimer: null,
         verseAnchor: null,
         verseDragEnd: null,
+        lastPoint: null,
+        scrollCallback: null,
+        rangeStartRef: null,
+        rangeEndRef: null,
+        boundaryNavigationTimer: null,
+        boundaryNavigationDirection: 0,
+        boundaryNavigationHint: null,
     };
     App.state.verseSelection = { singleSelected: null, rangeStart: null, rangeEnd: null };
     App.state.tabs = [];
@@ -730,6 +737,40 @@ describe('Nimble Navigation', () => {
     });
 
     // ── cancelHover ─────────────────────────────────────────────────────
+
+    describe('boundary navigation feedback', () => {
+        test('shows destination before extending into the next chapter', () => {
+            App.state.testament = 'Old Testament';
+            App.state.book = mockBook;
+            App.openVerseList(mockChapter);
+            App.state.nimble.verseAnchor = 7;
+
+            App.scheduleNimbleBoundaryNavigation(App.els.verseList, 1);
+
+            const hint = document.querySelector('.nimble-boundary-hint');
+            expect(hint).not.toBeNull();
+            expect(hint.textContent).toContain('Hold to extend to Genesis 2');
+
+            App.clearNimbleBoundaryNavigationTimer();
+        });
+
+        test('shows disabled feedback when there is no next chapter', () => {
+            App.state.testament = 'Old Testament';
+            App.state.book = mockBook;
+            App.state.chapter = mockBook.chapters[1];
+            App.openVerseList(mockBook.chapters[1]);
+            App.state.nimble.verseAnchor = 1;
+
+            App.scheduleNimbleBoundaryNavigation(App.els.verseList, 1);
+
+            const hint = document.querySelector('.nimble-boundary-hint');
+            expect(hint).not.toBeNull();
+            expect(hint.textContent).toContain('No next chapter');
+            expect(hint.classList.contains('is-disabled')).toBe(true);
+
+            App.clearNimbleBoundaryNavigationTimer();
+        });
+    });
 
     describe('cancelHover', () => {
         test('clears timer and progress cleanup', () => {
