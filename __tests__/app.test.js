@@ -115,6 +115,17 @@ eval(dataCode + '\nwindow.DataManager = DataManager;');
 const audioCode = fs.readFileSync(path.resolve(__dirname, '../js/audio.js'), 'utf-8');
 eval(audioCode + '\nwindow.AudioManager = AudioManager;');
 
+[
+    'app-navigation.js',
+    'app-nimble.js',
+    'app-verse-selection.js',
+    'app-tabs.js',
+    'app-search.js',
+].forEach((fileName) => {
+    const mixinCode = fs.readFileSync(path.resolve(__dirname, `../js/${fileName}`), 'utf-8');
+    eval(mixinCode);
+});
+
 const appCode = fs.readFileSync(path.resolve(__dirname, '../js/app.js'), 'utf-8');
 eval(appCode + '\nwindow.App = App;');
 
