@@ -669,6 +669,41 @@ describe('Nimble Navigation', () => {
             expect(App.state.targetVerseRangeEnd).toBe(6);
         });
 
+        test.each([[3, 6], [6, 3]])('keeps chapter context after selecting verses %i to %i and restoring the tab', (anchor, end) => {
+            App.state.testament = 'Old Testament';
+            App.state.book = mockBook;
+            App.state.chapter = mockChapter;
+            App.state.nimble.active = true;
+            App.state.nimble.verseAnchor = anchor;
+            App.state.nimble.verseDragEnd = end;
+            App.state.nimble.rangeStartRef = App.createPassageRef(mockBook, mockChapter, anchor);
+            App.state.nimble.rangeEndRef = App.createPassageRef(mockBook, mockChapter, end);
+
+            const expectChapterWithSelection = () => {
+                const verses = Array.from(App.els.verseContent.querySelectorAll('.verse'));
+                expect(verses.map(el => Number(el.dataset.verseNumber))).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
+                expect(verses.filter(el => el.classList.contains('passage-selected'))
+                    .map(el => Number(el.dataset.verseNumber))).toEqual([3, 4, 5, 6]);
+                expect(document.getElementById('verse-3').classList.contains('passage-start')).toBe(true);
+                expect(document.getElementById('verse-6').classList.contains('passage-end')).toBe(true);
+            };
+
+            App.endNimbleMode();
+            expectChapterWithSelection();
+            const rangeTabId = App.state.activeTabId;
+            expect(App.getTabLabel(App.state.tabs.find(tab => tab.id === rangeTabId))).toBe('GEN1:3-6');
+
+            App.createNewTab();
+            App.switchTab(rangeTabId);
+            expectChapterWithSelection();
+
+            App.state.tabs = [];
+            App.state.activeTabId = null;
+            expect(App.loadStateFromLocalStorage()).toBe(true);
+            App.switchTab(rangeTabId, true);
+            expectChapterWithSelection();
+        });
+
         test('does nothing when nimble was not active', () => {
             App.state.nimble.active = false;
             App.state.currentView = 'verseListView';
@@ -874,6 +909,68 @@ describe('Verse Selection', () => {
         });
     });
 
+    describe('selection in highlighted passages across chapters', () => {
+        beforeEach(() => {
+            App.openVerseView(mockChapter, 7, false, false, {
+                start: 7,
+                end: 8,
+                range: {
+                    start: App.createPassageRef(mockBook, mockChapter, 7),
+                    end: App.createPassageRef(mockBook, mockBook.chapters[1], 1),
+                },
+            });
+        });
+
+        test('long press selects the touched verse even when its number repeats in another chapter', () => {
+            const verseEl = document.getElementById('verse-Genesis-2-1');
+            App.handleVerseLongPress(verseEl);
+            expect(Array.from(document.querySelectorAll('.range-selected')).map(el => el.id))
+                .toEqual(['verse-Genesis-2-1']);
+            expect(verseEl.classList.contains('passage-selected')).toBe(true);
+
+            App.clearVerseSelection();
+            expect(verseEl.classList.contains('range-selected')).toBe(false);
+            expect(verseEl.classList.contains('passage-selected')).toBe(true);
+        });
+
+        test('tapping and copying a verse uses its chapter identity', () => {
+            const first = document.getElementById('verse-Genesis-1-1');
+            const second = document.getElementById('verse-Genesis-2-1');
+            const copy = jest.spyOn(App, 'fallbackCopyText').mockImplementation(() => {});
+            try {
+                App.handleVerseSingleTap(first, mockChapter.verses[0]);
+                App.handleVerseSingleTap(second, mockBook.chapters[1].verses[0]);
+                expect(first.classList.contains('selected')).toBe(false);
+                expect(second.classList.contains('selected')).toBe(true);
+                App.copySelectedVerses();
+                expect(copy).toHaveBeenCalledWith('Genesis 2:1 Thus the heavens were finished.');
+            } finally {
+                copy.mockRestore();
+            }
+        });
+
+        test.each([false, true])('drag selection across chapters copies only selected verses (reverse: %s)', reverse => {
+            const first = document.getElementById(reverse ? 'verse-Genesis-2-1' : 'verse-Genesis-1-7');
+            const last = document.getElementById(reverse ? 'verse-Genesis-1-7' : 'verse-Genesis-2-1');
+            const hitTest = jest.spyOn(App, 'getClosestVerseElementForPoint').mockReturnValue(last);
+            const copy = jest.spyOn(App, 'fallbackCopyText').mockImplementation(() => {});
+            try {
+                const anchor = App.handleVerseLongPress(first);
+                App.updateVerseRangeDragFromPoint(anchor, { x: 0, y: 0 });
+                expect(Array.from(document.querySelectorAll('.range-selected')).map(el => el.id))
+                    .toEqual(['verse-Genesis-1-7', 'verse-Genesis-1-8', 'verse-Genesis-2-1']);
+                App.copySelectedVerses();
+                expect(copy).toHaveBeenCalledWith(
+                    'Genesis 1:7-8 7 And God made the firmament. 8 And God called the firmament Heaven.\n' +
+                    'Genesis 2:1 Thus the heavens were finished.'
+                );
+            } finally {
+                hitTest.mockRestore();
+                copy.mockRestore();
+            }
+        });
+    });
+
     describe('clearVerseSelection', () => {
         test('clears all selection state', () => {
             App.state.verseSelection = { singleSelected: 3, rangeStart: 2, rangeEnd: 5 };
@@ -1013,9 +1110,16 @@ describe('Navigation Flow', () => {
             expect(el.classList.contains('nimble-target-visited')).toBe(true);
         });
 
-        test('renders passage ranges that continue into the next chapter', () => {
+        test('keeps context in every chapter when a passage range continues into the next chapter', () => {
             App.state.testament = 'Old Testament';
-            App.state.book = mockBook;
+            const nextChapter = { number: 2, verses: [
+                { number: 1, text: 'Selected verse in the next chapter.' },
+                { number: 2, text: 'Context after the selected range.' },
+            ] };
+            const book = { ...mockBook, chapters: [mockChapter, nextChapter] };
+            App.state.book = book;
+            DataManager.books = [book];
+            DataManager.getTestamentBooks.mockReturnValue([book]);
 
             App.openVerseView(mockChapter, 7, false, false, {
                 start: 7,
@@ -1027,9 +1131,13 @@ describe('Navigation Flow', () => {
             });
 
             const verseEls = document.querySelectorAll('.verse');
-            expect(verseEls.length).toBe(3);
+            expect(verseEls.length).toBe(10);
             expect(document.querySelector('.passage-chapter-heading').textContent).toBe('Genesis 2');
-            expect(Array.from(verseEls).every((el) => el.classList.contains('passage-selected'))).toBe(true);
+            expect(Array.from(verseEls).filter(el => el.classList.contains('passage-selected'))
+                .map(el => el.id)).toEqual(['verse-Genesis-1-7', 'verse-Genesis-1-8', 'verse-Genesis-2-1']);
+            expect(document.getElementById('verse-Genesis-1-7').classList.contains('passage-start')).toBe(true);
+            expect(document.getElementById('verse-Genesis-2-1').classList.contains('passage-end')).toBe(true);
+            expect(document.getElementById('verse-Genesis-2-2').classList.contains('nimble-target-visited')).toBe(false);
         });
     });
 

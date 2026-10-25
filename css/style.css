@@ -531,27 +531,34 @@ h1 {
     box-sizing: border-box;
 }
 
-.verse.selected {
+#verse-content .verse.selected {
     background-color: rgba(59, 130, 246, 0.3);
 }
 
-.verse.range-selected {
+#verse-content .verse.range-selected {
     background-color: rgba(59, 130, 246, 0.22);
     margin-bottom: 0;
     border-radius: 0;
 }
 
-.verse.range-selected.range-start {
+#verse-content .verse.range-selected.range-start {
     border-radius: 8px 8px 0 0;
 }
 
-.verse.range-selected.range-end {
+#verse-content .verse.range-selected.range-end {
     border-radius: 0 0 8px 8px;
     margin-bottom: 10px;
 }
 
-.verse.range-selected.range-start.range-end {
+#verse-content .verse.range-selected.range-start.range-end {
     border-radius: 8px;
+}
+
+/* Active selection takes priority over NimbleNav's saved passage highlight. */
+#verse-content .verse.selected,
+#verse-content .verse.range-selected {
+    border-left-color: var(--accent-color);
+    animation: none;
 }
 
 .verse.passage-selected {

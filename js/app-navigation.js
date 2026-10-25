@@ -404,7 +404,10 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         this.state.targetVerseRangeEnd = null; // Reset range end
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
         const passageRange = highlightRange?.range || null;
-        const passageSegments = passageRange ? this.getPassageSegments(passageRange) : null;
+        const isCrossChapterRange = passageRange &&
+            (passageRange.start.bookName !== passageRange.end.bookName ||
+             passageRange.start.chapterNumber !== passageRange.end.chapterNumber);
+        const passageSegments = isCrossChapterRange ? this.getPassageSegments(passageRange) : null;
 
         // Reset verse selection
         this.state.verseSelection = {
@@ -436,12 +439,12 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         }
 
         // Apply highlight range if provided (from nimble verse range drag)
-        if (passageRange) {
+        if (passageSegments) {
             this.state.targetVerseRangeEnd = passageRange.end.verseNumber;
-            this.applyRenderedPassageHighlight();
+            this.applyRenderedPassageHighlight(passageRange);
         } else if (highlightRange) {
-            const rangeStart = Math.min(highlightRange.start, highlightRange.end);
-            const rangeEnd = Math.max(highlightRange.start, highlightRange.end);
+            const rangeStart = passageRange ? passageRange.start.verseNumber : Math.min(highlightRange.start, highlightRange.end);
+            const rangeEnd = passageRange ? passageRange.end.verseNumber : Math.max(highlightRange.start, highlightRange.end);
             this.state.targetVerseRangeEnd = rangeEnd;
             // Use the white stripe style (nimble-target-visited) for range highlight
             for (let i = rangeStart; i <= rangeEnd; i++) {
@@ -474,7 +477,9 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         if (!skipAutoScroll) {
             setTimeout(() => {
                 const scrollTarget = targetVerseNum;
-                const el = document.getElementById(`verse-${scrollTarget}`);
+                const el = document.getElementById(passageSegments
+                    ? `verse-${passageRange.start.bookName}-${chapter.number}-${scrollTarget}`
+                    : `verse-${scrollTarget}`);
                 if (el && this.els.verseContent) {
                     // Safe scrolling that doesn't trigger mobile browser top-bar hide bugs
                     // by strictly scrolling the container, not the document.
@@ -560,7 +565,8 @@ renderPassageRangeSegments(segments) {
                 this.els.verseContent.appendChild(heading);
             }
 
-            segment.verses.forEach((verse) => {
+            // Keep the surrounding chapter visible; the range controls highlighting.
+            segment.chapter.verses.forEach((verse) => {
                 const ref = {
                     bookName: segment.book.name,
                     chapterNumber: segment.chapter.number
@@ -570,8 +576,16 @@ renderPassageRangeSegments(segments) {
         });
     },
 
-applyRenderedPassageHighlight() {
-        const verses = Array.from(this.els.verseContent.querySelectorAll('.verse'));
+applyRenderedPassageHighlight(range) {
+        const verses = Array.from(this.els.verseContent.querySelectorAll('.verse')).filter(el => {
+            const ref = {
+                bookName: el.dataset.bookName,
+                chapterNumber: Number(el.dataset.chapterNumber),
+                verseNumber: Number(el.dataset.verseNumber)
+            };
+            return this.comparePassageRefs(ref, range.start) >= 0 &&
+                this.comparePassageRefs(ref, range.end) <= 0;
+        });
         verses.forEach((el, index) => {
             el.classList.add('nimble-target-visited', 'passage-selected');
             if (verses.length === 1) {

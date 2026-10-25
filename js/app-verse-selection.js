@@ -65,7 +65,9 @@ bindVerseSelection(verseEl, verse) {
                 if (hoveredVerseNum !== null && hoveredVerseNum !== lastDraggedVerse) {
                     lastDraggedVerse = hoveredVerseNum;
                 }
-                if (hoveredVerseNum !== null && hoveredVerseNum !== rangeAnchorVerse) {
+                const selection = this.state.verseSelection;
+                if (hoveredVerseNum !== null &&
+                    (hoveredVerseNum !== rangeAnchorVerse || selection.rangeStartId !== selection.rangeEndId)) {
                     hasDraggedRange = true;
                 }
                 this.updateVerseRangeEdgeScroll(rangeAnchorVerse, point);
@@ -109,13 +111,14 @@ bindVerseSelection(verseEl, verse) {
                 this.stopVerseRangeEdgeScroll();
 
                 const selection = this.state.verseSelection;
-                const selectedOnlyAnchor = selection.rangeStart === rangeAnchorVerse && selection.rangeEnd === rangeAnchorVerse;
+                const selectedOnlyAnchor = selection.rangeStartId === selection.rangeEndId;
 
                 if ((!hasDraggedRange || selectedOnlyAnchor) && rangeAnchorVerse !== null) {
+                    const anchorEl = document.getElementById(selection.rangeAnchorId || `verse-${rangeAnchorVerse}`);
                     this.clearVerseSelection();
-                    const anchorEl = document.getElementById(`verse-${rangeAnchorVerse}`);
                     if (anchorEl) {
                         this.state.verseSelection.singleSelected = rangeAnchorVerse;
+                        this.state.verseSelection.singleSelectedId = anchorEl.id;
                         anchorEl.classList.add('selected');
                         this.showToolbar();
                     }
@@ -233,7 +236,8 @@ updateVerseRangeDragFromPoint(anchorVerse, point) {
         const hoveredVerseNum = parseInt(hoveredVerseEl.dataset.verseNumber, 10);
         if (Number.isNaN(hoveredVerseNum)) return null;
 
-        this.setVerseRangeSelection(anchorVerse, hoveredVerseNum);
+        const anchorEl = document.getElementById(this.state.verseSelection.rangeAnchorId || `verse-${anchorVerse}`);
+        this.setVerseRangeSelection(anchorVerse, hoveredVerseNum, anchorEl, hoveredVerseEl);
         return hoveredVerseNum;
     },
 
@@ -304,12 +308,20 @@ stopVerseRangeEdgeScroll(resetPoint = true) {
         }
     },
 
-setVerseRangeSelection(anchorVerse, endVerse) {
+setVerseRangeSelection(anchorVerse, endVerse, anchorEl = null, endEl = null) {
         if (anchorVerse === null || endVerse === null) return;
 
         this.state.verseSelection.singleSelected = null;
+        this.state.verseSelection.singleSelectedId = null;
         this.state.verseSelection.rangeStart = Math.min(anchorVerse, endVerse);
         this.state.verseSelection.rangeEnd = Math.max(anchorVerse, endVerse);
+        anchorEl = anchorEl || document.getElementById(`verse-${anchorVerse}`);
+        endEl = endEl || document.getElementById(`verse-${endVerse}`);
+        const verses = Array.from(this.els.verseContent.querySelectorAll('.verse'));
+        const forward = verses.indexOf(anchorEl) <= verses.indexOf(endEl);
+        this.state.verseSelection.rangeAnchorId = anchorEl?.id || null;
+        this.state.verseSelection.rangeStartId = (forward ? anchorEl : endEl)?.id || null;
+        this.state.verseSelection.rangeEndId = (forward ? endEl : anchorEl)?.id || null;
         this.updateVerseRangeSelection();
         this.showToolbar();
     },
@@ -323,19 +335,22 @@ handleVerseSingleTap(verseEl, verse) {
         }
 
         // If this verse is already selected, deselect it
-        if (this.state.verseSelection.singleSelected === verseNum) {
+        const selectedId = this.state.verseSelection.singleSelectedId;
+        if (selectedId ? selectedId === verseEl.id : this.state.verseSelection.singleSelected === verseNum) {
             this.state.verseSelection.singleSelected = null;
+            this.state.verseSelection.singleSelectedId = null;
             verseEl.classList.remove('selected');
             this.hideToolbar();
         } else {
             // Deselect previous single selection
             if (this.state.verseSelection.singleSelected !== null) {
-                const prevEl = document.getElementById(`verse-${this.state.verseSelection.singleSelected}`);
+                const prevEl = document.getElementById(selectedId || `verse-${this.state.verseSelection.singleSelected}`);
                 if (prevEl) prevEl.classList.remove('selected');
             }
 
             // Select this verse
             this.state.verseSelection.singleSelected = verseNum;
+            this.state.verseSelection.singleSelectedId = verseEl.id;
             verseEl.classList.add('selected');
             this.showToolbar();
         }
@@ -347,7 +362,7 @@ handleVerseLongPress(verseEl) {
             return null;
         }
 
-        this.setVerseRangeSelection(verseNum, verseNum);
+        this.setVerseRangeSelection(verseNum, verseNum, verseEl, verseEl);
         return verseNum;
     },
 
@@ -359,6 +374,23 @@ updateVerseRangeSelection() {
 
         const start = this.state.verseSelection.rangeStart;
         const end = this.state.verseSelection.rangeEnd;
+
+        // Verse numbers repeat across chapters; use the rendered verse identities
+        // to select the exact passage the user is touching.
+        const { rangeStartId, rangeEndId } = this.state.verseSelection;
+        if (rangeStartId && rangeEndId) {
+            const verses = Array.from(this.els.verseContent.querySelectorAll('.verse'));
+            const first = verses.findIndex(el => el.id === rangeStartId);
+            const last = verses.findIndex(el => el.id === rangeEndId);
+            if (first < 0 || last < 0) return;
+            verses.slice(first, last + 1).forEach((el, index) => {
+                el.classList.add('range-selected');
+                if (index === 0) el.classList.add('range-start');
+                if (index === last - first) el.classList.add('range-end');
+                if (index > 0 && index < last - first) el.classList.add('range-middle');
+            });
+            return;
+        }
 
         if (start !== null && end !== null) {
             for (let i = start; i <= end; i++) {
@@ -411,7 +443,25 @@ copySelectedVerses() {
         const selection = this.state.verseSelection;
         let textToCopy = '';
 
-        if (selection.singleSelected !== null) {
+        if (selection.singleSelectedId || selection.rangeStartId) {
+            const startEl = document.getElementById(selection.singleSelectedId || selection.rangeStartId);
+            const endEl = document.getElementById(selection.singleSelectedId || selection.rangeEndId);
+            if (!startEl || !endEl) return;
+            const getRef = el => ({
+                testament: this.state.testament,
+                bookName: el.dataset.bookName || this.state.book.name,
+                chapterNumber: Number(el.dataset.chapterNumber || this.state.chapter.number),
+                verseNumber: Number(el.dataset.verseNumber)
+            });
+            const range = this.normalizePassageRange(getRef(startEl), getRef(endEl));
+            textToCopy = this.getPassageSegments(range).map(({ book, chapter, verses }) => {
+                const start = verses[0].number;
+                const end = verses[verses.length - 1].number;
+                const verseRange = start === end ? `${start}` : `${start}-${end}`;
+                const text = verses.length === 1 ? verses[0].text : verses.map(verse => `${verse.number} ${verse.text}`).join(' ');
+                return `${book.name} ${chapter.number}:${verseRange} ${text}`;
+            }).join('\n');
+        } else if (selection.singleSelected !== null) {
             const verse = this.state.chapter.verses.find(v => v.number === selection.singleSelected);
             if (verse) {
                 textToCopy = `${this.state.book.name} ${this.state.chapter.number}:${verse.number} ${verse.text}`;
