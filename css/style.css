@@ -367,8 +367,12 @@ h1 {
     box-sizing: border-box;
 }
 
-#verse-list {
-    padding-bottom: calc(55vh + 150px);
+#verse-list::after {
+    /* Keep extra scroll space inside the grid. Large padding forces the flex
+       item's bottom edge (and NimbleNav's scroll trigger) below short screens. */
+    content: '';
+    grid-column: 1 / -1;
+    height: 55vh;
 }
 
 .grid-item {
