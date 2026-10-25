@@ -472,6 +472,7 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
         }, 150);
 
         this.switchView('verseView', skipHistory);
+        this.updateCollectionSaveButton();
 
         // Only auto-scroll if not restoring tab scroll position
         if (!skipAutoScroll) {
@@ -511,12 +512,12 @@ createVerseElement(verse, ref = null) {
         p.className = 'verse';
         p.id = ref ? `verse-${ref.bookName}-${ref.chapterNumber}-${verse.number}` : `verse-${verse.number}`;
         p.dataset.verseNumber = verse.number;
-        if (ref) {
-            p.dataset.bookName = ref.bookName;
-            p.dataset.chapterNumber = ref.chapterNumber;
-        }
+        p.dataset.testament = this.state.testament;
+        p.dataset.bookName = ref?.bookName || this.state.book.name;
+        p.dataset.chapterNumber = ref?.chapterNumber || this.state.chapter.number;
         p.innerHTML = `<span class="verse-num">${verse.number}</span>${verse.text}`;
         this.bindVerseSelection(p, verse);
+        this.updateVerseCollectionMarker(p);
         return p;
     },
 

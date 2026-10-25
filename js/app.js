@@ -33,6 +33,8 @@ state: {
         tabs: [],
         activeTabId: null,
         nextTabId: 1,
+        collections: [],
+        collectionSettings: { showMarkers: true, textSize: 'standard' },
         toolbarExpanded: false,
         toolbarPinnedByUser: false,
         verseRangeDrag: {
@@ -119,6 +121,7 @@ async init() {
         }
 
         this.cacheElements();
+        this.initCollections();
         this.bindEvents();
         this.setupHistory();
 
@@ -184,6 +187,7 @@ cacheElements() {
             verseList: document.getElementById('verse-list'),
             verseContent: document.getElementById('verse-content'),
             copyVerseBtn: document.getElementById('copy-verse-btn'),
+            saveCollectionBtn: document.getElementById('save-collection-btn'),
 
             testamentTitle: document.getElementById('testament-title'),
             bookTitle: document.getElementById('book-title'),
@@ -217,6 +221,7 @@ cacheElements() {
     },
 
 bindEvents() {
+        this.els.saveCollectionBtn?.addEventListener('click', () => this.openSaveCollection());
         // Back buttons
         document.querySelectorAll('.back-btn').forEach(btn => {
             btn.addEventListener('click', () => this.goBack());
@@ -351,6 +356,7 @@ hasVerseSelection() {
     },
 
 updateCopyButtonState() {
+        this.updateCollectionSaveButton();
         if (!this.els.copyVerseBtn) return;
 
         const hasSelection = this.state.verseSelection.singleSelected !== null ||
@@ -527,7 +533,8 @@ Object.assign(
     globalThis.AppNimble,
     globalThis.AppVerseSelection,
     globalThis.AppTabs,
-    globalThis.AppSearch
+    globalThis.AppSearch,
+    globalThis.AppCollections
 );
 
 globalThis.App = App;

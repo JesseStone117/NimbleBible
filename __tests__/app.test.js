@@ -52,6 +52,7 @@ function buildMinimalDOM() {
             <button id="toolbar-toggle-btn"><span class="toggle-arrow">^</span></button>
             <div class="toolbar-content">
                 <button id="copy-verse-btn" class="toolbar-btn copy-btn disabled"></button>
+                <button id="save-collection-btn" class="toolbar-btn save-collection-btn" disabled></button>
                 <button id="audio-play-btn" class="toolbar-btn audio-btn"></button>
                 <div class="audio-scrubber">
                     <div class="scrubber-track"><div class="scrubber-progress" id="scrubber-progress"></div>
@@ -121,6 +122,7 @@ eval(audioCode + '\nwindow.AudioManager = AudioManager;');
     'app-verse-selection.js',
     'app-tabs.js',
     'app-search.js',
+    'app-collections.js',
 ].forEach((fileName) => {
     const mixinCode = fs.readFileSync(path.resolve(__dirname, `../js/${fileName}`), 'utf-8');
     eval(mixinCode);
@@ -185,6 +187,9 @@ function resetApp() {
     App.state.tabs = [];
     App.state.activeTabId = null;
     App.state.nextTabId = 1;
+    App.state.collections = [];
+    App.state.collectionSettings = { showMarkers: true, textSize: 'standard' };
+    App.collectionVerseIndex = new Map();
     App.state.toolbarExpanded = false;
     App.state.navigationCooldown = false;
     App.state.nimbleScrollDirection = 0;
@@ -1436,6 +1441,177 @@ describe('Book Abbreviations', () => {
 
     test('returns first 3 chars uppercase for unknown books', () => {
         expect(App.getBookAbbreviation('UnknownBook')).toBe('UNK');
+    });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+//  COLLECTIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+describe('Collections', () => {
+    beforeAll(() => {
+        HTMLDialogElement.prototype.showModal = function () { this.open = true; };
+        HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new Event('close')); };
+    });
+
+    beforeEach(() => {
+        resetApp();
+        localStorage.removeItem(App.collectionStorageKey);
+        App.initCollections();
+        App.state.testament = 'Old Testament';
+        App.state.book = mockBook;
+        App.openVerseView(mockChapter, 1);
+    });
+
+    afterEach(() => {
+        clearTimeout(App.collectionStatusTimer);
+        localStorage.removeItem(App.collectionStorageKey);
+        document.documentElement.style.removeProperty('--reading-font-size');
+        jest.restoreAllMocks();
+    });
+
+    const range = (first, last, endChapter = mockChapter) => ({
+        start: App.createPassageRef(mockBook, mockChapter, first),
+        end: App.createPassageRef(mockBook, endChapter, last),
+    });
+
+    test('creates named collections, trims names, and prevents empty or duplicate names', () => {
+        const collection = App.createCollection('  Encouragement  ');
+        expect(collection.name).toBe('Encouragement');
+        expect(App.createCollection('encouragement')).toBeNull();
+        expect(App.createCollection('   ')).toBeNull();
+        expect(App.state.collections).toHaveLength(1);
+        expect(JSON.parse(localStorage.getItem(App.collectionStorageKey)).collections[0].name).toBe('Encouragement');
+    });
+
+    test('normalizes reversed saved ranges and avoids duplicate groupings', () => {
+        const collection = App.createCollection('Study');
+        expect(App.addPassageToCollection(collection.id, range(6, 3))).toBe(true);
+        expect(App.addPassageToCollection(collection.id, range(3, 6))).toBe(true);
+        expect(App.state.collections[0].passages).toHaveLength(1);
+        expect(App.state.collections[0].passages[0].start.verseNumber).toBe(3);
+        expect(App.state.collections[0].passages[0].end.verseNumber).toBe(6);
+    });
+
+    test('marks only saved verses and reports all collection memberships', () => {
+        const first = App.createCollection('Study', range(3, 5));
+        const second = App.createCollection('Hope', range(4, 6));
+        expect(document.getElementById('verse-2').querySelector('.verse-collection-marker')).toBeNull();
+        expect(document.getElementById('verse-3').querySelector('.verse-collection-marker').title).toBe('In Study');
+        const marker = document.getElementById('verse-4').querySelector('.verse-collection-marker');
+        expect(marker.getAttribute('aria-label')).toContain('Study, Hope');
+        marker.click();
+        expect(App.els.libraryDialog.open).toBe(true);
+        expect(App.els.libraryDialog.querySelectorAll('.collection-row')).toHaveLength(2);
+        expect(App.state.verseSelection.singleSelected).toBeNull();
+        expect(App.collectionVerseIndex.get('Genesis:1:4')).toEqual(new Set([first.id, second.id]));
+    });
+
+    test('markers survive a reload without changing saved tabs', () => {
+        const savedTabs = localStorage.getItem(App.storageKey);
+        App.createCollection('Favorites', range(2, 4));
+        App.state.collections = [];
+        App.collectionVerseIndex = new Map();
+        App.loadCollections();
+        App.applyCollectionSettings();
+        expect(App.state.collections[0].passages).toHaveLength(1);
+        expect(document.getElementById('verse-3').querySelector('.verse-collection-marker')).not.toBeNull();
+        expect(localStorage.getItem(App.storageKey)).toBe(savedTabs);
+    });
+
+    test('saves the active blue selection instead of the larger white highlighted range', () => {
+        App.openVerseView(mockChapter, 2, false, false, { start: 2, end: 6 });
+        expect(App.getCollectionSaveRange()).toEqual(range(2, 6));
+        expect(App.els.saveCollectionBtn.disabled).toBe(false);
+        App.setVerseRangeSelection(3, 4);
+        expect(App.getCollectionSaveRange()).toEqual(range(3, 4));
+        App.openSaveCollection();
+        const form = App.els.saveCollectionDialog.querySelector('form');
+        form.elements.collectionName.value = 'Chosen verses';
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+        expect(App.state.collections[0].passages[0]).toMatchObject(range(3, 4));
+        expect(App.els.saveCollectionDialog.open).toBe(false);
+        expect(document.getElementById('verse-2').querySelector('.verse-collection-marker')).toBeNull();
+    });
+
+    test('saves and marks ranges across chapters with repeating verse numbers', () => {
+        const passage = range(7, 1, mockBook.chapters[1]);
+        App.openVerseView(mockChapter, 7, false, false, { start: 7, end: 8, range: passage });
+        expect(App.getCollectionSaveRange()).toEqual(passage);
+        App.createCollection('Across chapters', App.getCollectionSaveRange());
+        expect(Array.from(App.els.verseContent.querySelectorAll('.has-collection')).map(el => el.id))
+            .toEqual(['verse-Genesis-1-7', 'verse-Genesis-1-8', 'verse-Genesis-2-1']);
+    });
+
+    test('removing a saved grouping updates markers while keeping overlapping memberships', () => {
+        const collection = App.createCollection('Study', range(2, 4));
+        App.addPassageToCollection(collection.id, range(4, 6));
+        App.openLibrary('detail', collection.id);
+        App.els.libraryDialog.querySelector('[aria-label^="Remove Genesis 1:2"]').click();
+        expect(App.state.collections[0].passages).toHaveLength(1);
+        expect(document.getElementById('verse-3').querySelector('.verse-collection-marker')).toBeNull();
+        expect(document.getElementById('verse-4').querySelector('.verse-collection-marker')).not.toBeNull();
+    });
+
+    test('opens every grouping as an individual tab and returns to the first grouping', () => {
+        const collection = App.createCollection('Reading', range(3, 4));
+        App.addPassageToCollection(collection.id, range(7, 1, mockBook.chapters[1]));
+        App.addPassageToCollection(collection.id, range(6, 6));
+        const originalTab = App.state.activeTabId;
+        const count = App.state.tabs.length;
+        expect(App.openAllCollectionPassages(collection.id)).toBe(3);
+        expect(App.state.tabs).toHaveLength(count + 3);
+        expect(App.state.tabs.some(tab => tab.id === originalTab)).toBe(true);
+        const newTabs = App.state.tabs.slice(-3);
+        expect(newTabs.map(tab => App.getTabLabel(tab))).toEqual(['GEN1:3-4', 'GEN1:7-2:1', 'GEN1:6']);
+        expect(App.state.activeTabId).toBe(newTabs[0].id);
+        expect(Array.from(document.querySelectorAll('.passage-selected')).map(el => Number(el.dataset.verseNumber))).toEqual([3, 4]);
+        expect(JSON.parse(localStorage.getItem(App.storageKey)).tabs).toHaveLength(count + 3);
+    });
+
+    test('an empty collection does not create any tabs', () => {
+        const collection = App.createCollection('Empty');
+        const before = App.state.tabs.length;
+        expect(App.openAllCollectionPassages(collection.id)).toBe(0);
+        expect(App.state.tabs).toHaveLength(before);
+        App.openLibrary('detail', collection.id);
+        expect(App.els.libraryDialog.querySelector('.collection-secondary').disabled).toBe(true);
+    });
+
+    test('does not claim to save or change markers when device storage fails', () => {
+        const collection = App.createCollection('Study');
+        const stored = localStorage.getItem(App.collectionStorageKey);
+        jest.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Quota exceeded'); });
+        expect(App.addPassageToCollection(collection.id, range(2, 4))).toBe(false);
+        expect(App.state.collections[0].passages).toHaveLength(0);
+        expect(document.querySelector('.verse-collection-marker')).toBeNull();
+        expect(localStorage.getItem(App.collectionStorageKey)).toBe(stored);
+        expect(document.getElementById('collection-status').textContent).toContain('Couldn’t save');
+    });
+
+    test('collection names are rendered as text', () => {
+        const name = '<img src=x onerror=alert(1)>';
+        App.createCollection(name);
+        App.openLibrary();
+        expect(App.els.libraryDialog.querySelector('img')).toBeNull();
+        expect(App.els.libraryDialog.textContent).toContain(name);
+    });
+
+    test('settings persist and hiding markers does not remove collection memberships', () => {
+        App.createCollection('Study', range(3, 4));
+        App.openLibrary('settings');
+        const checkbox = App.els.libraryDialog.querySelector('input[type="checkbox"]');
+        checkbox.checked = false;
+        checkbox.dispatchEvent(new Event('change'));
+        const size = App.els.libraryDialog.querySelector('select');
+        size.value = 'large';
+        size.dispatchEvent(new Event('change'));
+        expect(document.querySelector('.verse-collection-marker')).toBeNull();
+        expect(App.state.collections[0].passages).toHaveLength(1);
+        App.loadCollections();
+        App.applyCollectionSettings();
+        expect(App.state.collectionSettings).toEqual({ showMarkers: false, textSize: 'large' });
+        expect(document.documentElement.style.getPropertyValue('--reading-font-size')).toBe('1.3rem');
     });
 });
 

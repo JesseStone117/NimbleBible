@@ -6,6 +6,7 @@ import './app-nimble.js';
 import './app-verse-selection.js';
 import './app-tabs.js';
 import './app-search.js';
+import './app-collections.js';
 import './app.js';
 
 const manifestLink = document.createElement('link');
