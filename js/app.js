@@ -16,6 +16,7 @@ state: {
             verseAnchor: null,
             verseDragEnd: null,
             lastPoint: null,
+            boundaryArrivalPoint: null,
             scrollCallback: null,
             rangeStartRef: null,
             rangeEndRef: null,

@@ -476,7 +476,7 @@ h1 {
     background: var(--accent-color);
     transform: scaleX(0);
     transform-origin: left center;
-    animation: nimble-boundary-fill 0.9s linear forwards;
+    animation: nimble-boundary-fill var(--nimble-boundary-duration, 600ms) linear forwards;
 }
 
 .nimble-boundary-hint.is-disabled .nimble-boundary-hint__bar::before {

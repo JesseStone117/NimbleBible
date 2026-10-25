@@ -173,6 +173,7 @@ function resetApp() {
         verseAnchor: null,
         verseDragEnd: null,
         lastPoint: null,
+        boundaryArrivalPoint: null,
         scrollCallback: null,
         rangeStartRef: null,
         rangeEndRef: null,
@@ -774,6 +775,143 @@ describe('Nimble Navigation', () => {
     // ── cancelHover ─────────────────────────────────────────────────────
 
     describe('boundary navigation feedback', () => {
+        beforeEach(() => {
+            jest.useFakeTimers();
+            App.state.testament = 'Old Testament';
+            App.state.book = mockBook;
+            App.openVerseList(mockChapter);
+            App.state.nimble.active = true;
+            App.state.nimble.verseAnchor = 7;
+            App.state.nimble.verseDragEnd = 7;
+            App.state.nimble.rangeStartRef = App.createPassageRef(mockBook, mockChapter, 7);
+            App.state.nimble.rangeEndRef = App.state.nimble.rangeStartRef;
+        });
+
+        afterEach(() => {
+            App.stopNimbleScroll();
+            App.clearNimbleBoundaryNavigationTimer();
+            jest.clearAllTimers();
+            jest.useRealTimers();
+            jest.restoreAllMocks();
+        });
+
+        function setListGeometry(firstTop, lastBottom) {
+            const list = App.els.verseList;
+            jest.spyOn(list, 'getBoundingClientRect').mockReturnValue({ top: 60, bottom: 500 });
+            jest.spyOn(list.firstElementChild, 'getBoundingClientRect').mockReturnValue({ top: firstTop, bottom: firstTop + 60 });
+            jest.spyOn(list.lastElementChild, 'getBoundingClientRect').mockImplementation(() => ({ top: lastBottom - 60, bottom: lastBottom }));
+            Object.defineProperty(list, 'clientHeight', { configurable: true, value: 440 });
+            Object.defineProperty(list, 'scrollHeight', { configurable: true, value: 2000 });
+            list.scrollTop = 100;
+            return list;
+        }
+
+        test('extends just beyond the last row without scrolling through the bottom spacer', () => {
+            const list = setListGeometry(-200, 300);
+            App.updateNimbleEdgeScroll(list, { clientX: 160, clientY: 326 });
+            expect(list.scrollTop + list.clientHeight).toBeLessThan(list.scrollHeight);
+            expect(App.state.nimble.boundaryNavigationDirection).toBe(1);
+            expect(App.state.nimbleScrollDirection).toBe(0);
+            expect(document.querySelector('.nimble-boundary-hint').textContent).toContain('Genesis 2');
+            jest.advanceTimersByTime(App.nimbleBoundaryHoldDuration - 1);
+            expect(App.state.chapter).toBe(mockChapter);
+            jest.advanceTimersByTime(1);
+            expect(App.state.chapter).toBe(mockBook.chapters[1]);
+            expect(App.els.verseList.scrollTop).toBe(0);
+        });
+
+        test('moving back onto the verses cancels the chapter transition', () => {
+            const list = setListGeometry(-200, 300);
+            App.updateNimbleEdgeScroll(list, { clientX: 160, clientY: 326 });
+            App.updateNimbleEdgeScroll(list, { clientX: 160, clientY: 280 });
+            expect(document.querySelector('.nimble-boundary-hint')).toBeNull();
+            jest.advanceTimersByTime(App.nimbleBoundaryHoldDuration);
+            expect(App.state.chapter).toBe(mockChapter);
+        });
+
+        test('does not restart the hold timer as the finger moves within the boundary area', () => {
+            const list = setListGeometry(-200, 300);
+            App.updateNimbleEdgeScroll(list, { clientY: 326 });
+            const timer = App.state.nimble.boundaryNavigationTimer;
+            jest.advanceTimersByTime(300);
+            App.updateNimbleEdgeScroll(list, { clientY: 340 });
+            expect(App.state.nimble.boundaryNavigationTimer).toBe(timer);
+            jest.advanceTimersByTime(App.nimbleBoundaryHoldDuration - 300);
+            expect(App.state.chapter).toBe(mockBook.chapters[1]);
+        });
+
+        test('auto-scroll hands off to chapter extension even with a stationary finger', () => {
+            const list = setListGeometry(-200, 700);
+            let frame;
+            const raf = jest.spyOn(window, 'requestAnimationFrame').mockImplementation(callback => {
+                frame = callback;
+                return 123;
+            });
+            const touch = { clientY: 490 };
+            const update = () => App.updateNimbleEdgeScroll(list, touch, update);
+            update();
+            expect(App.state.nimbleScrollDirection).toBeGreaterThan(0);
+            list.lastElementChild.getBoundingClientRect.mockReturnValue({ top: 380, bottom: 440 });
+            frame();
+            expect(App.state.nimble.boundaryNavigationDirection).toBe(1);
+            expect(App.state.nimbleScrollDirection).toBe(0);
+            expect(App.state.nimbleScrollAnimationId).toBeNull();
+            expect(raf).toHaveBeenCalledTimes(1);
+        });
+
+        test('the next chapter starts at verse one and stays there until the finger moves deliberately', () => {
+            App.els.verseList.scrollTop = 900;
+            App.state.nimble.lastPoint = { x: 160, y: 480 };
+            App.state.nimbleScrollDirection = 1;
+            App.state.nimbleScrollAnimationId = requestAnimationFrame(() => {});
+            App.navigateNimbleAdjacentChapter(1);
+            expect(App.els.verseList.scrollTop).toBe(0);
+            expect(App.state.nimbleScrollDirection).toBe(0);
+            expect(App.state.nimbleScrollAnimationId).toBeNull();
+            expect(App.state.nimble.rangeEndRef.chapterNumber).toBe(2);
+            expect(App.state.nimble.rangeEndRef.verseNumber).toBe(1);
+            const update = jest.spyOn(App, 'updateNimbleVerseDragFromPoint').mockImplementation(() => {});
+            App.handleNimbleMove({ preventDefault() {}, touches: [{ clientX: 161, clientY: 481 }] });
+            jest.advanceTimersByTime(2000);
+            expect(update).not.toHaveBeenCalled();
+            expect(App.state.chapter.number).toBe(2);
+            expect(App.els.verseList.scrollTop).toBe(0);
+        });
+
+        test('opening the previous chapter shows its last row instead of its bottom spacer', () => {
+            App.openVerseList(mockBook.chapters[1]);
+            App.state.nimble.rangeStartRef = App.createPassageRef(mockBook, mockBook.chapters[1], 1);
+            App.state.nimble.rangeEndRef = App.state.nimble.rangeStartRef;
+            jest.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function () {
+                return this.id === 'verse-list' ? { top: 60, bottom: 500 } : { top: 840, bottom: 900 };
+            });
+            App.navigateNimbleAdjacentChapter(-1);
+            expect(App.state.chapter).toBe(mockChapter);
+            expect(App.els.verseList.scrollTop).toBe(500);
+            expect(Array.from(App.els.verseList.querySelectorAll('.nimble-range')).map(el => el.data.number)).toEqual([8]);
+        });
+
+        test('going forward highlights only the selected verses in the new chapter', () => {
+            const nextChapter = { number: 2, verses: mockChapter.verses };
+            const book = { ...mockBook, chapters: [mockChapter, nextChapter] };
+            DataManager.books = [book];
+            DataManager.getTestamentBooks.mockReturnValue([book]);
+            App.state.book = book;
+            App.navigateNimbleAdjacentChapter(1);
+            expect(Array.from(App.els.verseList.querySelectorAll('.nimble-range')).map(el => el.data.number)).toEqual([1]);
+            expect(App.els.verseList.querySelector('.nimble-anchor')).toBeNull();
+        });
+
+        test('releasing before the hold completes cancels the transition', () => {
+            const list = setListGeometry(-200, 300);
+            App.updateNimbleEdgeScroll(list, { clientY: 326 });
+            jest.spyOn(App, 'openVerseView').mockImplementation(() => {});
+            App.endNimbleMode();
+            jest.advanceTimersByTime(App.nimbleBoundaryHoldDuration);
+            expect(App.state.chapter).toBe(mockChapter);
+            expect(App.state.nimble.boundaryArrivalPoint).toBeNull();
+        });
+
         test('shows destination before extending into the next chapter', () => {
             App.state.testament = 'Old Testament';
             App.state.book = mockBook;

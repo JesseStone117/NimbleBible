@@ -1,4 +1,6 @@
 globalThis.AppNimble = {
+nimbleBoundaryHoldDuration: 600,
+
 startNimbleMode(context) {
         if (this.state.nimble.active) return;
 
@@ -53,15 +55,22 @@ handleNimbleMove(e) {
 
         // === Verse drag sub-mode: track which verse grid item the finger is over ===
         if (this.state.nimble.verseAnchor !== null) {
+            const arrivalPoint = this.state.nimble.boundaryArrivalPoint;
+            if (arrivalPoint && Math.hypot(touch.clientX - arrivalPoint.x, touch.clientY - arrivalPoint.y) < 24) {
+                return;
+            }
+            this.state.nimble.boundaryArrivalPoint = null;
             this.state.nimble.lastPoint = { x: touch.clientX, y: touch.clientY };
-            this.updateNimbleVerseDragFromPoint(touch.clientX, touch.clientY);
 
             const activeList = document.querySelector('.view.active .grid-list');
             if (activeList) {
-                this.updateNimbleEdgeScroll(activeList, touch, () => {
+                const updateDrag = () => {
                     const point = this.state.nimble.lastPoint;
-                    if (point) this.updateNimbleVerseDragFromPoint(point.x, point.y);
-                });
+                    if (!point) return;
+                    this.updateNimbleVerseDragFromPoint(point.x, point.y);
+                    this.updateNimbleEdgeScroll(activeList, { clientX: point.x, clientY: point.y }, updateDrag);
+                };
+                updateDrag();
             }
             return;
         }
@@ -139,9 +148,17 @@ updateNimbleVerseDragFromPoint(x, y) {
         let itemEl = target?.closest('.grid-item');
 
         if (!itemEl || itemEl.dataset.type !== 'verse') {
+            itemEl = null;
             const activeList = document.querySelector('.view.active .grid-list');
             if (activeList) {
                 const verseItems = Array.from(activeList.querySelectorAll('.grid-item[data-type="verse"]'));
+                const first = verseItems[0];
+                const last = verseItems[verseItems.length - 1];
+                if (last && y > last.getBoundingClientRect().bottom) {
+                    itemEl = last;
+                } else if (first && y < first.getBoundingClientRect().top) {
+                    itemEl = first;
+                }
                 let closest = null;
                 let closestDistance = Infinity;
                 verseItems.forEach((el) => {
@@ -154,7 +171,7 @@ updateNimbleVerseDragFromPoint(x, y) {
                         closestDistance = distance;
                     }
                 });
-                itemEl = closest;
+                itemEl = itemEl || closest;
             }
         }
 
@@ -173,6 +190,26 @@ updateNimbleEdgeScroll(activeList, touch, onScroll = null) {
         const listRect = activeList.getBoundingClientRect();
         const scrollThreshold = 80;
 
+        // Extend at the verse rows, rather than at the far end of the padding.
+        const verses = activeList.querySelectorAll('.grid-item[data-type="verse"]');
+        const firstRect = verses[0]?.getBoundingClientRect();
+        const lastRect = verses[verses.length - 1]?.getBoundingClientRect();
+        const boundaryGap = 24;
+        let boundaryDirection = 0;
+        if (this.state.nimble.verseAnchor !== null && firstRect && lastRect) {
+            if (lastRect.bottom <= listRect.bottom && touch.clientY >= lastRect.bottom + boundaryGap) {
+                boundaryDirection = 1;
+            } else if (firstRect.top >= listRect.top && touch.clientY <= firstRect.top - boundaryGap) {
+                boundaryDirection = -1;
+            }
+        }
+        if (boundaryDirection !== 0) {
+            this.stopNimbleScroll();
+            this.scheduleNimbleBoundaryNavigation(activeList, boundaryDirection);
+            return;
+        }
+        this.clearNimbleBoundaryNavigationTimer();
+
         let newDirection = 0;
         if (touch.clientY > listRect.bottom - scrollThreshold) {
             const depth = (touch.clientY - (listRect.bottom - scrollThreshold)) / scrollThreshold;
@@ -182,8 +219,6 @@ updateNimbleEdgeScroll(activeList, touch, onScroll = null) {
             newDirection = -Math.min(1, depth);
         }
 
-        this.state.nimble.scrollCallback = onScroll;
-
         if (newDirection !== 0 && this.state.nimbleScrollDirection === 0) {
             this.state.nimbleScrollDirection = newDirection;
             this.startNimbleScroll(activeList);
@@ -192,45 +227,28 @@ updateNimbleEdgeScroll(activeList, touch, onScroll = null) {
         } else {
             this.state.nimbleScrollDirection = newDirection;
         }
-
-        if (this.state.nimble.verseAnchor !== null && newDirection !== 0) {
-            this.scheduleNimbleBoundaryNavigation(activeList, newDirection);
-        } else {
-            this.clearNimbleBoundaryNavigationTimer();
-        }
+        this.state.nimble.scrollCallback = onScroll;
     },
 
 scheduleNimbleBoundaryNavigation(activeList, direction) {
-        const atStart = activeList.scrollTop <= 1;
-        const atEnd = activeList.scrollTop + activeList.clientHeight >= activeList.scrollHeight - 1;
-        const shouldNavigate = direction < 0 ? atStart : atEnd;
-
-        if (!shouldNavigate) {
-            this.clearNimbleBoundaryNavigationTimer();
-            return;
-        }
-
         const normalizedDirection = direction > 0 ? 1 : -1;
-        const adjacent = this.getAdjacentChapter(normalizedDirection);
-        if (!adjacent) {
-            this.showNimbleBoundaryHint(normalizedDirection, null);
-            return;
-        }
-
-        if (this.state.nimble.boundaryNavigationTimer &&
+        if (this.state.nimble.boundaryNavigationHint &&
             this.state.nimble.boundaryNavigationDirection === normalizedDirection) {
             return;
         }
 
         this.clearNimbleBoundaryNavigationTimer();
-        this.showNimbleBoundaryHint(normalizedDirection, adjacent);
         this.state.nimble.boundaryNavigationDirection = normalizedDirection;
+        const adjacent = this.getAdjacentChapter(normalizedDirection);
+        this.showNimbleBoundaryHint(normalizedDirection, adjacent);
+        if (!adjacent) return;
 
         this.state.nimble.boundaryNavigationTimer = setTimeout(() => {
-            this.state.nimble.boundaryNavigationTimer = null;
-            this.hideNimbleBoundaryHint();
+            this.clearNimbleBoundaryNavigationTimer();
+            if (!this.state.nimble.active || this.state.nimble.verseAnchor === null ||
+                !activeList.closest('.view.active')) return;
             this.navigateNimbleAdjacentChapter(normalizedDirection);
-        }, 900);
+        }, this.nimbleBoundaryHoldDuration);
     },
 
 clearNimbleBoundaryNavigationTimer() {
@@ -263,6 +281,7 @@ showNimbleBoundaryHint(direction, adjacent) {
             : `No ${directionLabel} chapter`;
 
         hint.querySelector('.nimble-boundary-hint__text').textContent = text;
+        hint.style.setProperty('--nimble-boundary-duration', `${this.nimbleBoundaryHoldDuration}ms`);
         hint.classList.toggle('is-disabled', !adjacent);
         hint.classList.toggle('at-top', direction < 0);
         hint.classList.toggle('at-bottom', direction > 0);
@@ -290,6 +309,11 @@ navigateNimbleAdjacentChapter(direction) {
         const adjacent = this.getAdjacentChapter(direction);
         if (!adjacent) return;
 
+        this.stopNimbleScroll();
+        this.clearNimbleBoundaryNavigationTimer();
+        this.state.nimble.boundaryArrivalPoint = this.state.nimble.lastPoint
+            ? { ...this.state.nimble.lastPoint }
+            : null;
         this.state.book = adjacent.book;
         this.state.chapter = adjacent.chapter;
         this.openVerseList(adjacent.chapter, true);
@@ -302,13 +326,16 @@ navigateNimbleAdjacentChapter(direction) {
 
         this.state.nimble.verseDragEnd = edgeVerse.number;
         this.state.nimble.rangeEndRef = this.createPassageRef(adjacent.book, adjacent.chapter, edgeVerse.number);
-        setTimeout(() => {
-            this.highlightNimbleVerseRange();
-            const activeList = document.querySelector('.view.active .grid-list');
-            if (activeList && direction < 0) {
-                activeList.scrollTop = activeList.scrollHeight;
-            }
-        }, 0);
+        const activeList = this.els.verseList;
+        activeList.scrollTop = 0;
+        if (direction < 0) {
+            const lastItem = activeList.lastElementChild;
+            // Show the last row with room to move past it, without the blank spacer.
+            activeList.scrollTop = Math.max(0,
+                lastItem.getBoundingClientRect().bottom - activeList.getBoundingClientRect().bottom + 100);
+        }
+        this.highlightNimbleVerseRange();
+        if (navigator.vibrate) navigator.vibrate(20);
     },
 
 getAdjacentChapter(direction) {
@@ -425,8 +452,8 @@ startNimbleScroll(list) {
         const baseSpeed = 15; // pixels per frame at max speed
 
         const scroll = () => {
+            this.state.nimbleScrollAnimationId = null;
             if (this.state.nimbleScrollDirection === 0) {
-                this.state.nimbleScrollAnimationId = null;
                 return;
             }
 
@@ -438,7 +465,9 @@ startNimbleScroll(list) {
                 this.state.nimble.scrollCallback();
             }
 
-            this.state.nimbleScrollAnimationId = requestAnimationFrame(scroll);
+            if (this.state.nimbleScrollDirection !== 0) {
+                this.state.nimbleScrollAnimationId = requestAnimationFrame(scroll);
+            }
         };
 
         if (!this.state.nimbleScrollAnimationId) {
@@ -466,6 +495,7 @@ endNimbleMode() {
         this.state.nimble.verseAnchor = null;
         this.state.nimble.verseDragEnd = null;
         this.state.nimble.lastPoint = null;
+        this.state.nimble.boundaryArrivalPoint = null;
         this.state.nimble.scrollCallback = null;
         this.state.nimble.rangeStartRef = null;
         this.state.nimble.rangeEndRef = null;
@@ -532,6 +562,9 @@ highlightNimbleVerseRange() {
 
         const rangeStart = Math.min(anchor, dragEnd);
         const rangeEnd = Math.max(anchor, dragEnd);
+        const startRef = this.state.nimble.rangeStartRef;
+        const endRef = this.state.nimble.rangeEndRef;
+        const passageRange = startRef && endRef ? this.normalizePassageRange(startRef, endRef) : null;
 
         // Clear all range highlights and anchor highlights
         document.querySelectorAll('.grid-item.nimble-range').forEach(el => el.classList.remove('nimble-range'));
@@ -545,8 +578,12 @@ highlightNimbleVerseRange() {
         activeList.querySelectorAll('.grid-item').forEach(el => {
             if (el.dataset.type === 'verse' && el.data) {
                 const num = el.data.number;
-                if (num >= rangeStart && num <= rangeEnd) {
-                    if (num === anchor) {
+                const ref = this.createPassageRef(this.state.book, this.state.chapter, num);
+                const inRange = passageRange
+                    ? this.comparePassageRefs(ref, passageRange.start) >= 0 && this.comparePassageRefs(ref, passageRange.end) <= 0
+                    : num >= rangeStart && num <= rangeEnd;
+                if (inRange) {
+                    if (passageRange ? this.isSamePassagePoint(ref, startRef) : num === anchor) {
                         el.classList.add('nimble-anchor');
                     } else {
                         el.classList.add('nimble-range');
