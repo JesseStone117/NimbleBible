@@ -196,7 +196,16 @@ globalThis.AppCollections = {
     },
 
     updateCollectionSaveButton() {
-        if (this.els.saveCollectionBtn) this.els.saveCollectionBtn.disabled = !this.getCollectionSaveRange();
+        const button = this.els.saveCollectionBtn;
+        if (!button) return;
+        const range = this.getCollectionSaveRange();
+        const bookmarked = !!range && this.state.collections.some(collection =>
+            collection.passages.some(passage => this.comparePassageRefs(passage.start, range.start) <= 0 &&
+                this.comparePassageRefs(passage.end, range.end) >= 0));
+        button.disabled = !range;
+        button.classList.toggle('bookmarked', bookmarked);
+        button.setAttribute('aria-pressed', String(bookmarked));
+        button.setAttribute('aria-label', bookmarked ? 'Passage bookmarked. Save to collection' : 'Save passage to collection');
     },
 
     updateVerseCollectionMarker(element) {
@@ -227,6 +236,7 @@ globalThis.AppCollections = {
         const settings = this.state.collectionSettings || { showMarkers: true, textSize: 'standard' };
         document.documentElement.style.setProperty('--reading-font-size', { small: '1rem', standard: '1.1rem', large: '1.3rem' }[settings.textSize]);
         this.els.verseContent?.querySelectorAll('.verse').forEach(element => this.updateVerseCollectionMarker(element));
+        this.updateCollectionSaveButton();
     },
 
     formatCollectionRange(range) {

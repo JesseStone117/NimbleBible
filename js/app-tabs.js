@@ -131,11 +131,12 @@ applyPassageRangeToTab(tab, range) {
     },
 
 isHomeTab(tab) {
-        return !!tab && !tab.bookName && !tab.chapterNumber;
+        return !!tab && !tab.bookName && !tab.chapterNumber && !tab.testament;
     },
 
 dedupeHomeTabs() {
-        const homeTabs = this.state.tabs.filter(tab => this.isHomeTab(tab));
+        const isEmptyHome = tab => this.isHomeTab(tab) && (!tab.navigationHistory || tab.navigationHistory.length <= 1);
+        const homeTabs = this.state.tabs.filter(isEmptyHome);
         if (homeTabs.length <= 1) return;
 
         const activeTab = this.state.tabs.find(tab => tab.id === this.state.activeTabId);
@@ -143,12 +144,12 @@ dedupeHomeTabs() {
             ? activeTab.id
             : homeTabs[0].id;
 
-        this.state.tabs = this.state.tabs.filter(tab => !this.isHomeTab(tab) || tab.id === keepHomeTabId);
+        this.state.tabs = this.state.tabs.filter(tab => !isEmptyHome(tab) || tab.id === keepHomeTabId);
     },
 
 getTabLabel(tab) {
         if (!tab.bookName || !tab.chapterNumber) {
-            return 'Home';
+            return tab.bookName ? this.getBookAbbreviation(tab.bookName) : tab.testament || 'Home';
         }
         let label = `${this.getBookAbbreviation(tab.bookName)}${tab.chapterNumber}`;
         if (tab.verseNumber) {
@@ -177,7 +178,7 @@ openPassageReferencesInTabs(input) {
         if (refs.length === 0) return 0;
 
         this.saveCurrentTabState();
-        this.state.tabs = this.state.tabs.filter(tab => !this.isHomeTab(tab));
+        this.state.tabs = this.state.tabs.filter(tab => !this.isHomeTab(tab) || tab.navigationHistory?.length > 1);
 
         refs.forEach((range) => {
             const tab = {
@@ -196,7 +197,7 @@ openPassageReferencesInTabs(input) {
     },
 
 parsePassageReference(reference) {
-        const raw = (reference || '').trim();
+        const raw = (reference || '').trim().replace(/[–—]/g, '-');
         if (!raw) return null;
 
         const match = this.matchBookFromReference(raw);
@@ -204,6 +205,23 @@ parsePassageReference(reference) {
 
         const startBook = match.book;
         const rest = raw.slice(match.length).trim();
+        const parts = rest.split(/\s*-\s*/);
+        const endBookMatch = parts.length === 2 ? this.matchBookFromReference(parts[1]) : null;
+        if (endBookMatch) {
+            const first = parts[0].match(/^(\d+)\s*:\s*(\d+)$/);
+            const last = parts[1].slice(endBookMatch.length).trim().match(/^(\d+)\s*:\s*(\d+)$/);
+            if (!first || !last) return null;
+            const start = { testament: this.getTestamentForBook(startBook.name), bookName: startBook.name, chapterNumber: Number(first[1]), verseNumber: Number(first[2]) };
+            const end = { testament: this.getTestamentForBook(endBookMatch.book.name), bookName: endBookMatch.book.name, chapterNumber: Number(last[1]), verseNumber: Number(last[2]) };
+            if (!this.isValidPassageRef(start) || !this.isValidPassageRef(end)) return null;
+            return this.normalizePassageRange(start, end);
+        }
+        if (/^\d+$/.test(rest)) {
+            const chapter = startBook.chapters.find(item => item.number === Number(rest));
+            if (!chapter?.verses.length) return null;
+            const start = { testament: this.getTestamentForBook(startBook.name), bookName: startBook.name, chapterNumber: chapter.number, verseNumber: chapter.verses[0].number };
+            return { start, end: { ...start, verseNumber: chapter.verses[chapter.verses.length - 1].number } };
+        }
         const refMatch = rest.match(/^(\d+)\s*:?\s*(\d+)(?:\s*-\s*(?:(\d+)\s*:)?\s*(\d+))?$/);
         if (!refMatch) return null;
 
@@ -278,8 +296,7 @@ createNewTab() {
         const existingHomeTab = this.state.tabs.find(t => this.isHomeTab(t));
         if (existingHomeTab) {
             // Reuse existing home tab
-            this.state.activeTabId = existingHomeTab.id;
-            this.goHome();
+            this.switchTab(existingHomeTab.id);
             this.renderTabs();
             return;
         }
@@ -310,16 +327,17 @@ saveCurrentTabState() {
         const currentTab = this.state.tabs.find(t => t.id === this.state.activeTabId);
         if (!currentTab) return;
 
+        this.captureNavigationScroll();
+        currentTab.view = this.state.currentView;
         currentTab.testament = this.state.testament;
         currentTab.bookName = this.state.book?.name || null;
         currentTab.chapterNumber = this.state.chapter?.number || null;
         currentTab.verseNumber = this.state.targetVerseNum || null;
         currentTab.verseRangeEnd = this.state.targetVerseRangeEnd || null;
-        if (!currentTab.endBookName || currentTab.bookName === currentTab.endBookName && currentTab.chapterNumber === currentTab.endChapterNumber) {
-            currentTab.endBookName = currentTab.bookName;
-            currentTab.endChapterNumber = currentTab.chapterNumber;
-            currentTab.endVerseNumber = currentTab.verseRangeEnd || currentTab.verseNumber;
-        }
+        const range = this.state.currentView === 'verseView' ? this.state.currentPassageRange : null;
+        currentTab.endBookName = range?.end.bookName || currentTab.bookName;
+        currentTab.endChapterNumber = range?.end.chapterNumber || currentTab.chapterNumber;
+        currentTab.endVerseNumber = range?.end.verseNumber || currentTab.verseRangeEnd || currentTab.verseNumber;
 
         // Save scroll position if in verse view
         if (this.state.currentView === 'verseView' && this.els.verseContent) {
@@ -345,70 +363,8 @@ switchTab(tabId, restoreHistory = false) {
         if (!tab) return;
 
         this.state.activeTabId = tabId;
-
-        // Restore tab state
-        if (tab.bookName && tab.chapterNumber) {
-            // Rebuild physical browser history tree if requested (e.g. app init)
-            if (restoreHistory) {
-                this.rebuildHistoryStack(tab);
-            }
-
-            // Need to restore the full navigation state
-            this.state.testament = tab.testament;
-
-            // Find book and chapter from the data
-            const books = DataManager.getTestamentBooks(tab.testament);
-            const book = books.find(b => b.name === tab.bookName);
-            if (book) {
-                this.state.book = book;
-                const chapter = book.chapters.find(c => c.number === tab.chapterNumber);
-                if (chapter) {
-                    // Pass skipAutoScroll=true to prevent auto-scroll to verse
-                    // Restore verse range highlight if this tab had one
-                    const isCrossChapterRange = tab.endBookName && tab.endChapterNumber &&
-                        (tab.endBookName !== tab.bookName || tab.endChapterNumber !== tab.chapterNumber);
-                    const restoreRange = isCrossChapterRange
-                        ? {
-                            start: tab.verseNumber || 1,
-                            end: chapter.verses[chapter.verses.length - 1].number,
-                            range: this.normalizePassageRange(
-                                {
-                                    testament: tab.testament,
-                                    bookName: tab.bookName,
-                                    chapterNumber: tab.chapterNumber,
-                                    verseNumber: tab.verseNumber || 1
-                                },
-                                {
-                                    testament: tab.testament,
-                                    bookName: tab.endBookName,
-                                    chapterNumber: tab.endChapterNumber,
-                                    verseNumber: tab.endVerseNumber
-                                }
-                            )
-                        }
-                        : (tab.verseRangeEnd && tab.verseNumber && tab.verseRangeEnd !== tab.verseNumber)
-                            ? { start: tab.verseNumber, end: tab.verseRangeEnd }
-                            : null;
-                    this.openVerseView(chapter, tab.verseNumber || 1, true, true, restoreRange);
-
-                    // Restore scroll position immediately; tab switches should feel like returning to the same page.
-                    if (tab.scrollPosition !== undefined && this.els.verseContent) {
-                        setTimeout(() => {
-                            this.els.verseContent.scrollTo({
-                                top: tab.scrollPosition,
-                                behavior: 'auto'
-                            });
-                        }, 0);
-                    }
-                }
-            }
-        } else {
-            // Tab is on home
-            this.goHome();
-        }
-
-        this.renderTabs();
-        this.saveStateToLocalStorage(); // Persist
+        this.ensureTabNavigation(tab);
+        this.restoreTabNavigation(tab);
     },
 
 updateCurrentTabFromNavigation() {
@@ -425,6 +381,7 @@ updateCurrentTabFromNavigation() {
             };
             this.state.tabs.push(initialTab);
             this.state.activeTabId = initialTab.id;
+            this.saveCurrentTabState();
         } else {
             this.saveCurrentTabState();
         }
@@ -443,15 +400,24 @@ renderTabs() {
             tabEl.textContent = this.getTabLabel(tab);
             tabEl.dataset.tabId = tab.id;
 
-            // Single tap to switch
-            tabEl.addEventListener('click', () => this.switchTab(tab.id));
+            // Tap to switch tabs or open the active tab’s options.
+            tabEl.addEventListener('click', () => {
+                if (tabEl.dataset.suppressClick === 'true') {
+                    delete tabEl.dataset.suppressClick;
+                    return;
+                }
+                if (tab.id === this.state.activeTabId) this.showTabOptionsMenu(tab);
+                else this.switchTab(tab.id);
+            });
 
-            // Long press to delete
+            // Long press for options or drag to reorder.
             this.bindTabLongPress(tabEl, tab);
 
             this.els.tabsContainer.appendChild(tabEl);
         });
 
+        this.ensureTabNavigation();
+        this.updateNavigationButtons();
         this.updateTabsBarVisibility();
     },
 
@@ -478,6 +444,7 @@ bindTabLongPress(tabEl, tab) {
 
         const startPress = (e) => {
             isLongPress = false;
+            delete tabEl.dataset.suppressClick;
             hasMoved = false;
 
             // Get starting position
@@ -537,6 +504,7 @@ bindTabLongPress(tabEl, tab) {
 
         const endPress = (e) => {
             clearTimeout(pressTimer);
+            if (hasMoved || isLongPress) tabEl.dataset.suppressClick = 'true';
             if (isLongPress) {
                 e.preventDefault();
                 e.stopPropagation();
@@ -575,12 +543,49 @@ showTabOptionsMenu(tab) {
             <div class="tab-options-popup">
                 <p>Tab: ${this.getTabLabel(tab)}</p>
                 <div class="tab-options-buttons">
+                    <label class="passage-edit-label" for="edit-tab-passage">Passage range</label>
+                    <input id="edit-tab-passage" class="passage-tabs-input" placeholder="John 3:16-18" autocomplete="off">
+                    <p class="passage-edit-error" role="alert" hidden></p>
+                    <button class="tab-options-action" id="save-tab-passage-btn">Update Passage Range</button>
                     <button class="tab-options-action" id="copy-single-tab-btn">Copy Passage Reference</button>
                     <button class="tab-options-danger" id="close-single-tab-btn">Close Tab</button>
                     <button class="tab-options-cancel">Cancel</button>
                 </div>
             </div>
         `;
+
+        const input = overlay.querySelector('#edit-tab-passage');
+        if (tab.bookName && tab.chapterNumber) {
+            const start = { testament: tab.testament, bookName: tab.bookName, chapterNumber: tab.chapterNumber, verseNumber: tab.verseNumber || 1 };
+            const end = { ...start, bookName: tab.endBookName || tab.bookName, chapterNumber: tab.endChapterNumber || tab.chapterNumber, verseNumber: tab.endVerseNumber || tab.verseRangeEnd || start.verseNumber };
+            input.value = tab.verseNumber ? this.formatCollectionRange({ start, end }) : `${tab.bookName} ${tab.chapterNumber}`;
+        }
+        const saveRange = () => {
+            const range = this.parsePassageReference(input.value);
+            if (!range) {
+                const error = overlay.querySelector('.passage-edit-error');
+                error.textContent = 'Enter a valid passage, such as John 3:16-18.';
+                error.hidden = false;
+                input.focus();
+                return;
+            }
+            if (tab.id !== this.state.activeTabId) this.switchTab(tab.id);
+            this.saveCurrentTabState();
+            this.state.testament = range.start.testament;
+            this.state.book = this.findBook(range.start.testament, range.start.bookName);
+            const chapter = this.state.book.chapters.find(ch => ch.number === range.start.chapterNumber);
+            this.openVerseView(chapter, range.start.verseNumber, false, false, {
+                start: range.start.verseNumber, end: range.end.verseNumber, range
+            });
+            this.applyPassageRangeToTab(tab, range);
+            this.renderTabs();
+            this.saveStateToLocalStorage();
+            overlay.remove();
+        };
+        overlay.querySelector('#save-tab-passage-btn').addEventListener('click', saveRange);
+        input.addEventListener('keydown', event => {
+            if (event.key === 'Enter') saveRange();
+        });
 
         // Cancel button
         overlay.querySelector('.tab-options-cancel').addEventListener('click', () => {
@@ -647,57 +652,7 @@ deleteTab(tabId) {
             const newActiveTab = this.state.tabs[newActiveIndex];
             this.state.activeTabId = newActiveTab.id;
 
-            // Navigate to the new active tab's content
-            if (newActiveTab.bookName && newActiveTab.chapterNumber) {
-                this.state.testament = newActiveTab.testament;
-                const books = DataManager.getTestamentBooks(newActiveTab.testament);
-                const book = books.find(b => b.name === newActiveTab.bookName);
-                if (book) {
-                    this.state.book = book;
-                    const chapter = book.chapters.find(c => c.number === newActiveTab.chapterNumber);
-                    if (chapter) {
-                        // Pass skipAutoScroll=true to prevent auto-scroll to verse
-                        // Restore verse range highlight if this tab had one
-                        const isCrossChapterRange = newActiveTab.endBookName && newActiveTab.endChapterNumber &&
-                            (newActiveTab.endBookName !== newActiveTab.bookName || newActiveTab.endChapterNumber !== newActiveTab.chapterNumber);
-                        const restoreRange = isCrossChapterRange
-                            ? {
-                                start: newActiveTab.verseNumber || 1,
-                                end: chapter.verses[chapter.verses.length - 1].number,
-                                range: this.normalizePassageRange(
-                                    {
-                                        testament: newActiveTab.testament,
-                                        bookName: newActiveTab.bookName,
-                                        chapterNumber: newActiveTab.chapterNumber,
-                                        verseNumber: newActiveTab.verseNumber || 1
-                                    },
-                                    {
-                                        testament: newActiveTab.testament,
-                                        bookName: newActiveTab.endBookName,
-                                        chapterNumber: newActiveTab.endChapterNumber,
-                                        verseNumber: newActiveTab.endVerseNumber
-                                    }
-                                )
-                            }
-                            : (newActiveTab.verseRangeEnd && newActiveTab.verseNumber && newActiveTab.verseRangeEnd !== newActiveTab.verseNumber)
-                                ? { start: newActiveTab.verseNumber, end: newActiveTab.verseRangeEnd }
-                                : null;
-                        this.openVerseView(chapter, newActiveTab.verseNumber || 1, true, true, restoreRange);
-
-                        // Restore scroll position immediately; tab switches should feel like returning to the same page.
-                        if (newActiveTab.scrollPosition !== undefined && this.els.verseContent) {
-                            setTimeout(() => {
-                                this.els.verseContent.scrollTo({
-                                    top: newActiveTab.scrollPosition,
-                                    behavior: 'auto'
-                                });
-                            }, 0);
-                        }
-                    }
-                }
-            } else {
-                this.goHome();
-            }
+            this.switchTab(newActiveTab.id, true);
         }
 
         this.renderTabs();

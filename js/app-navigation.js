@@ -144,73 +144,128 @@ switchView(viewId, skipHistory = false) {
             this.stopAudio();
         }
 
-        // Push state for browser back button (except home and when restoring from history)
-        if (!skipHistory && viewId !== 'homeView') {
-            history.pushState({
-                view: viewId,
-                testament: this.state.testament,
-                book: this.state.book ? { name: this.state.book.name } : null,
-                chapter: this.state.chapter ? { number: this.state.chapter.number } : null
-            }, '', '');
+        if (!skipHistory) {
+            this.recordTabNavigation();
+            if (viewId !== 'verseView') this.updateCurrentTabFromNavigation();
+        }
+        this.updateNavigationButtons();
+    },
+
+navigationSnapshot() {
+        return {
+            view: this.state.currentView,
+            testament: this.state.testament,
+            bookName: this.state.book?.name || null,
+            chapterNumber: this.state.chapter?.number || null,
+            verseNumber: this.state.targetVerseNum || 1,
+            range: this.state.currentView === 'verseView' ? this.state.currentPassageRange || null : null,
+            scrollPosition: 0
+        };
+    },
+
+ensureTabNavigation(tab = this.state.tabs.find(item => item.id === this.state.activeTabId)) {
+        if (!tab || tab.navigationHistory?.length) return tab;
+        // Older saved tabs contain a passage only; seed its navigation hierarchy.
+        const home = { view: 'homeView', testament: null, bookName: null, chapterNumber: null, verseNumber: 1, range: null, scrollPosition: 0 };
+        const entries = [home];
+        if (tab.testament) entries.push({ ...home, view: 'bookView', testament: tab.testament });
+        if (tab.bookName) entries.push({ ...entries[entries.length - 1], view: 'chapterView', bookName: tab.bookName });
+        if (tab.chapterNumber) {
+            entries.push({ ...entries[entries.length - 1], view: 'verseListView', chapterNumber: tab.chapterNumber });
+            if (!tab.view || tab.view === 'verseView') {
+                const start = { testament: tab.testament, bookName: tab.bookName, chapterNumber: tab.chapterNumber, verseNumber: tab.verseNumber || 1 };
+                const end = { ...start, bookName: tab.endBookName || tab.bookName, chapterNumber: tab.endChapterNumber || tab.chapterNumber, verseNumber: tab.endVerseNumber || tab.verseRangeEnd || start.verseNumber };
+                entries.push({ ...entries[entries.length - 1], view: 'verseView', verseNumber: start.verseNumber,
+                    range: tab.verseRangeEnd || end.bookName !== start.bookName || end.chapterNumber !== start.chapterNumber ? { start, end } : null, scrollPosition: tab.scrollPosition || 0 });
+            }
+        }
+        tab.navigationHistory = entries;
+        tab.navigationIndex = entries.length - 1;
+        return tab;
+    },
+
+captureNavigationScroll() {
+        if (this.restoringNavigation) return;
+        const tab = this.state.tabs.find(item => item.id === this.state.activeTabId);
+        const entry = tab?.navigationHistory?.[tab.navigationIndex];
+        if (entry?.view !== this.state.currentView) return;
+        const container = this.els[entry.view]?.querySelector('.grid-list, #verse-content');
+        if (container) entry.scrollPosition = container.scrollTop;
+    },
+
+recordTabNavigation() {
+        if (this.restoringNavigation) return;
+        const tab = this.ensureTabNavigation();
+        if (!tab) return;
+        const entry = this.navigationSnapshot();
+        const previous = tab.navigationHistory[tab.navigationIndex];
+        const same = previous && ['view', 'testament', 'bookName', 'chapterNumber', 'verseNumber'].every(key => previous[key] === entry[key]) &&
+            JSON.stringify(previous.range) === JSON.stringify(entry.range);
+        if (!same) {
+            tab.navigationHistory = tab.navigationHistory.slice(0, tab.navigationIndex + 1);
+            tab.navigationHistory.push(entry);
+            tab.navigationIndex = tab.navigationHistory.length - 1;
+            history.pushState({ view: entry.view, tabId: tab.id, navigationIndex: tab.navigationIndex }, '', '');
+        }
+        this.saveStateToLocalStorage();
+        this.updateNavigationButtons();
+    },
+
+updateNavigationButtons() {
+        const tab = this.ensureTabNavigation();
+        document.querySelectorAll('.back-btn').forEach(button => {
+            button.disabled = !tab || tab.navigationIndex <= 0;
+        });
+        document.querySelectorAll('.forward-btn').forEach(button => {
+            button.disabled = !tab || tab.navigationIndex >= tab.navigationHistory.length - 1;
+        });
+    },
+
+restoreTabNavigation(tab) {
+        const entry = tab.navigationHistory[tab.navigationIndex];
+        if (!entry) return;
+        this.restoringNavigation = true;
+        try {
+            this.state.testament = entry.testament;
+            this.state.book = this.findBook(entry.testament, entry.bookName);
+            this.state.chapter = this.state.book?.chapters.find(chapter => chapter.number === entry.chapterNumber) || null;
+            this.state.targetVerseNum = entry.verseNumber;
+            this.state.targetVerseRangeEnd = null;
+            this.state.currentPassageRange = entry.range;
+            this.closeSearch();
+            if (entry.view === 'verseView' && this.state.chapter) {
+                const highlight = entry.range ? { start: entry.range.start.verseNumber, end: entry.range.end.verseNumber, range: entry.range } : null;
+                this.openVerseView(this.state.chapter, entry.verseNumber, true, true, highlight);
+            } else if (entry.view === 'verseListView' && this.state.chapter) this.openVerseList(this.state.chapter, true);
+            else if (entry.view === 'chapterView' && this.state.book) this.openChapterList(this.state.book, true);
+            else if (entry.view === 'bookView' && entry.testament) this.openBookList(entry.testament, true);
+            else this.switchView('homeView', true);
+            const container = this.els[entry.view]?.querySelector('.grid-list, #verse-content');
+            if (container) container.scrollTop = entry.scrollPosition || 0;
+            this.saveCurrentTabState();
+            this.renderTabs();
+            history.replaceState({ view: entry.view, tabId: tab.id, navigationIndex: tab.navigationIndex }, '', '');
+        } finally {
+            this.restoringNavigation = false;
         }
     },
 
-rebuildHistoryStack(tab) {
-        // Base case: always start at home in the background stack
-        history.replaceState({
-            view: 'homeView',
-            testament: null,
-            book: null,
-            chapter: null
-        }, '', '');
-
-        if (!tab || (!tab.testament && !tab.bookName)) return;
-
-        // Push bookView (Testament selection)
-        history.pushState({
-            view: 'bookView',
-            testament: tab.testament,
-            book: null,
-            chapter: null
-        }, '', '');
-
-        if (!tab.bookName) return;
-
-        // Push chapterView (Book selected, viewing chapters)
-        history.pushState({
-            view: 'chapterView',
-            testament: tab.testament,
-            book: { name: tab.bookName },
-            chapter: null
-        }, '', '');
-
-        if (!tab.chapterNumber) return;
-
-        // Push verseListView (Chapter selected, viewing verses)
-        history.pushState({
-            view: 'verseListView',
-            testament: tab.testament,
-            book: { name: tab.bookName },
-            chapter: { number: tab.chapterNumber }
-        }, '', '');
-
-        // Note: The final verseView state will be pushed naturally by switchView
-        // inside the openVerseView call later in the chain.
+moveTabHistory(direction) {
+        const tab = this.ensureTabNavigation();
+        if (!tab) return;
+        const index = tab.navigationIndex + direction;
+        if (index < 0 || index >= tab.navigationHistory.length) return;
+        this.captureNavigationScroll();
+        tab.navigationIndex = index;
+        this.restoreTabNavigation(tab);
     },
 
 goBack() {
-        // Don't go back if we're already on home
-        if (this.state.currentView === 'homeView') {
-            return;
-        }
+        this.moveTabHistory(-1);
+    },
 
-        // Use browser history back when possible
-        if (history.length > 1) {
-            history.back();
-        } else {
-            // Fallback to manual navigation if no history
-            this.navigateToPreviousView();
-        }
+goForward() {
+        this.moveTabHistory(1);
     },
 
 goHome() {
@@ -219,7 +274,11 @@ goHome() {
             return;
         }
 
+        this.captureNavigationScroll();
         // Reset state
+        this.state.targetVerseNum = null;
+        this.state.targetVerseRangeEnd = null;
+        this.state.currentPassageRange = null;
         this.state.testament = null;
         this.state.book = null;
         this.state.chapter = null;
@@ -231,15 +290,7 @@ goHome() {
         this.hideToolbar();
 
         // Navigate to home
-        this.switchView('homeView', true);
-
-        // Replace history state to avoid cluttering browser history
-        history.replaceState({
-            view: 'homeView',
-            testament: null,
-            book: null,
-            chapter: null
-        }, '', '');
+        this.switchView('homeView');
     },
 
 navigateToPreviousView() {
@@ -316,7 +367,11 @@ renderHome() {
     },
 
 openBookList(testament, skipHistory = false) {
+        this.captureNavigationScroll();
         this.state.testament = testament;
+        this.state.book = null;
+        this.state.chapter = null;
+        this.state.targetVerseNum = null;
         this.els.testamentTitle.textContent = testament;
 
         const books = DataManager.getTestamentBooks(testament);
@@ -344,7 +399,10 @@ openBookList(testament, skipHistory = false) {
     },
 
 openChapterList(book, skipHistory = false) {
+        this.captureNavigationScroll();
         this.state.book = book;
+        this.state.chapter = null;
+        this.state.targetVerseNum = null;
         this.els.bookTitle.textContent = book.name;
 
         this.els.chapterList.innerHTML = '';
@@ -371,7 +429,9 @@ openChapterList(book, skipHistory = false) {
     },
 
 openVerseList(chapter, skipHistory = false) {
+        this.captureNavigationScroll();
         this.state.chapter = chapter;
+        this.state.targetVerseNum = null;
         this.els.verseListTitle.textContent = `${this.state.book.name} ${chapter.number}`;
 
         this.els.verseList.innerHTML = '';
@@ -399,11 +459,16 @@ openVerseList(chapter, skipHistory = false) {
     },
 
 openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll = false, highlightRange = null) {
+        this.captureNavigationScroll();
         this.state.chapter = chapter;
         this.state.targetVerseNum = targetVerseNum; // Track for tab labels
         this.state.targetVerseRangeEnd = null; // Reset range end
         this.els.chapterTitle.textContent = `${this.state.book.name} ${chapter.number}`;
-        const passageRange = highlightRange?.range || null;
+        const passageRange = highlightRange?.range || (highlightRange ? this.normalizePassageRange(
+            this.createPassageRef(this.state.book, chapter, highlightRange.start),
+            this.createPassageRef(this.state.book, chapter, highlightRange.end)
+        ) : null);
+        this.state.currentPassageRange = passageRange;
         const isCrossChapterRange = passageRange &&
             (passageRange.start.bookName !== passageRange.end.bookName ||
              passageRange.start.chapterNumber !== passageRange.end.chapterNumber);
@@ -503,6 +568,7 @@ openVerseView(chapter, targetVerseNum = 1, skipHistory = false, skipAutoScroll =
 
         // Update tab state (skip if restoring from tab switch to avoid overwriting)
         if (!skipAutoScroll) {
+            if (skipHistory) this.recordTabNavigation();
             this.updateCurrentTabFromNavigation();
         }
     },

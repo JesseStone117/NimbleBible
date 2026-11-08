@@ -169,7 +169,13 @@ setupHistory() {
                 this.closeSearch();
                 return;
             }
-            this.restoreFromHistory(e.state);
+            const tab = this.state.tabs.find(item => item.id === e.state?.tabId);
+            if (tab?.navigationHistory?.[e.state.navigationIndex]) {
+                this.saveCurrentTabState();
+                this.state.activeTabId = tab.id;
+                tab.navigationIndex = e.state.navigationIndex;
+                this.restoreTabNavigation(tab);
+            } else this.goBack();
         });
     },
 
@@ -225,6 +231,10 @@ bindEvents() {
         // Back buttons
         document.querySelectorAll('.back-btn').forEach(btn => {
             btn.addEventListener('click', () => this.goBack());
+        });
+
+        document.querySelectorAll('.forward-btn').forEach(btn => {
+            btn.addEventListener('click', () => this.goForward());
         });
 
         // Search buttons

@@ -19,26 +19,26 @@ function buildMinimalDOM() {
     document.body.innerHTML = `
     <div id="app" data-current-view="homeView">
         <div id="home-view" class="view active">
-            <div class="header"><button class="back-btn">←</button><h1>NimbleBible</h1></div>
+            <div class="header"><button class="back-btn">←</button><button class="forward-btn">→</button><h1>NimbleBible</h1></div>
             <div class="home-content">
                 <button id="btn-ot" class="big-btn" data-testament="Old Testament">Old Testament</button>
                 <button id="btn-nt" class="big-btn" data-testament="New Testament">New Testament</button>
             </div>
         </div>
         <div id="book-view" class="view hidden">
-            <div class="header"><button class="back-btn">←</button><h1 id="testament-title">Testament</h1><button class="search-btn">🔍</button></div>
+            <div class="header"><button class="back-btn">←</button><button class="forward-btn">→</button><h1 id="testament-title">Testament</h1><button class="search-btn">🔍</button></div>
             <div id="book-list" class="grid-list"></div>
         </div>
         <div id="chapter-view" class="view hidden">
-            <div class="header"><button class="back-btn">←</button><h1 id="book-title">Book</h1></div>
+            <div class="header"><button class="back-btn">←</button><button class="forward-btn">→</button><h1 id="book-title">Book</h1></div>
             <div id="chapter-list" class="grid-list"></div>
         </div>
         <div id="verse-list-view" class="view hidden">
-            <div class="header"><button class="back-btn">←</button><h1 id="verse-list-title">Chapter</h1></div>
+            <div class="header"><button class="back-btn">←</button><button class="forward-btn">→</button><h1 id="verse-list-title">Chapter</h1></div>
             <div id="verse-list" class="grid-list"></div>
         </div>
         <div id="verse-view" class="view hidden">
-            <div class="header"><button class="back-btn">←</button><h1 id="chapter-title">Verses</h1></div>
+            <div class="header"><button class="back-btn">←</button><button class="forward-btn">→</button><h1 id="chapter-title">Verses</h1></div>
             <div id="verse-content"></div>
         </div>
         <div id="search-modal" class="search-modal hidden">
@@ -166,6 +166,8 @@ function resetApp() {
     App.state.chapter = null;
     App.state.targetVerseNum = undefined;
     App.state.targetVerseRangeEnd = null;
+    App.state.currentPassageRange = null;
+    App.restoringNavigation = false;
     App.state.nimble = {
         active: false,
         timer: null,
@@ -1638,5 +1640,130 @@ describe('Copy Button State', () => {
         App.state.verseSelection = { singleSelected: null, rangeStart: 2, rangeEnd: 5 };
         App.updateCopyButtonState();
         expect(App.els.copyVerseBtn.classList.contains('disabled')).toBe(false);
+    });
+});
+
+
+describe('Tab options and navigation history', () => {
+    beforeEach(() => {
+        resetApp();
+        App.createNewTab();
+    });
+
+    function openPassage(start = 3, end = 6) {
+        App.openBookList('Old Testament');
+        App.openChapterList(mockBook);
+        App.openVerseList(mockChapter);
+        App.openVerseView(mockChapter, start, false, false, { start, end });
+        return App.state.tabs.find(tab => tab.id === App.state.activeTabId);
+    }
+
+    test('a single click on the active tab opens options; another tab switches first', () => {
+        const passage = openPassage();
+        App.createNewTab();
+        document.querySelector(`[data-tab-id="${passage.id}"]`).click();
+        expect(App.state.activeTabId).toBe(passage.id);
+        expect(document.querySelector('.tab-options-overlay')).toBeNull();
+        document.querySelector(`[data-tab-id="${passage.id}"]`).click();
+        expect(document.querySelector('#edit-tab-passage').value).toBe('Genesis 1:3–6');
+    });
+
+    test('edits a tab range in place and restores both ranges through history', () => {
+        const tab = openPassage();
+        App.showTabOptionsMenu(tab);
+        document.querySelector('#edit-tab-passage').value = 'Genesis 1:7-2:1';
+        document.querySelector('#save-tab-passage-btn').click();
+        expect(App.state.tabs).toHaveLength(1);
+        expect(App.getTabLabel(tab)).toBe('GEN1:7-2:1');
+        expect(App.els.verseContent.querySelectorAll('.passage-selected')).toHaveLength(3);
+        App.goBack();
+        expect(App.getTabLabel(tab)).toBe('GEN1:3-6');
+        expect(App.els.verseContent.querySelectorAll('.passage-selected')).toHaveLength(4);
+        App.goForward();
+        expect(App.getTabLabel(tab)).toBe('GEN1:7-2:1');
+        expect(App.els.verseContent.querySelectorAll('.passage-selected')).toHaveLength(3);
+    });
+
+    test('rejects an invalid range without changing the tab', () => {
+        const tab = openPassage();
+        App.showTabOptionsMenu(tab);
+        document.querySelector('#edit-tab-passage').value = 'Genesis 999:1';
+        document.querySelector('#save-tab-passage-btn').click();
+        expect(App.getTabLabel(tab)).toBe('GEN1:3-6');
+        expect(document.querySelector('.passage-edit-error').hidden).toBe(false);
+    });
+
+    test('keeps forward history, ranges, and scroll positions separate between tabs and across reloads', () => {
+        const first = openPassage();
+        App.els.verseContent.scrollTop = 240;
+        App.goBack();
+        expect(App.state.currentView).toBe('verseListView');
+        expect(document.querySelector('.forward-btn').disabled).toBe(false);
+        App.createNewTab();
+        const second = openPassage(2, 4);
+        expect(document.querySelector('.forward-btn').disabled).toBe(true);
+        App.switchTab(first.id);
+        expect(App.state.currentView).toBe('verseListView');
+        App.goForward();
+        expect(App.els.verseContent.scrollTop).toBe(240);
+        expect(App.getTabLabel(first)).toBe('GEN1:3-6');
+        App.switchTab(second.id);
+        expect(App.getTabLabel(second)).toBe('GEN1:2-4');
+        App.goBack();
+        App.saveCurrentTabState();
+        App.state.tabs = [];
+        App.state.activeTabId = null;
+        App.loadStateFromLocalStorage();
+        App.switchTab(second.id, true);
+        expect(App.state.currentView).toBe('verseListView');
+        expect(document.querySelector('.forward-btn').disabled).toBe(false);
+        App.goForward();
+        expect(App.getTabLabel(App.state.tabs.find(tab => tab.id === second.id))).toBe('GEN1:2-4');
+    });
+
+    test('navigating after going back discards only that tab’s forward history', () => {
+        const tab = openPassage();
+        App.goBack();
+        App.openVerseView(mockChapter, 8);
+        App.goForward();
+        expect(App.state.targetVerseNum).toBe(8);
+        expect(tab.navigationIndex).toBe(tab.navigationHistory.length - 1);
+        expect(document.querySelector('.forward-btn').disabled).toBe(true);
+    });
+
+    test('keeps a tab’s forward history when returning home alongside another home tab', () => {
+        const first = openPassage();
+        App.createNewTab();
+        App.switchTab(first.id);
+        for (let i = 0; i < 4; i++) App.goBack();
+        expect(App.state.currentView).toBe('homeView');
+        expect(App.state.tabs).toHaveLength(2);
+        expect(document.querySelector('.back-btn').disabled).toBe(true);
+        expect(document.querySelector('.forward-btn').disabled).toBe(false);
+        App.goForward();
+        expect(App.state.currentView).toBe('bookView');
+    });
+});
+
+describe('Bookmark button saved state', () => {
+    beforeEach(resetApp);
+
+    test('highlights saved passages and updates immediately when saved or removed', () => {
+        App.state.testament = 'Old Testament';
+        App.state.book = mockBook;
+        App.openVerseView(mockChapter, 3, false, false, { start: 3, end: 6 });
+        const button = App.els.saveCollectionBtn;
+        expect(button.disabled).toBe(false);
+        expect(button.classList.contains('bookmarked')).toBe(false);
+        expect(button.getAttribute('aria-pressed')).toBe('false');
+        const collection = App.createCollection('Saved', App.getCollectionSaveRange());
+        expect(button.classList.contains('bookmarked')).toBe(true);
+        App.handleVerseSingleTap(document.getElementById('verse-4'), mockChapter.verses[3]);
+        expect(button.classList.contains('bookmarked')).toBe(true);
+        App.handleVerseSingleTap(document.getElementById('verse-8'), mockChapter.verses[7]);
+        expect(button.classList.contains('bookmarked')).toBe(false);
+        App.handleVerseSingleTap(document.getElementById('verse-4'), mockChapter.verses[3]);
+        App.commitCollections([{ ...collection, passages: [] }]);
+        expect(button.classList.contains('bookmarked')).toBe(false);
     });
 });
