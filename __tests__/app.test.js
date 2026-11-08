@@ -1672,6 +1672,7 @@ describe('Tab options and navigation history', () => {
         const tab = openPassage();
         App.showTabOptionsMenu(tab);
         document.querySelector('#edit-tab-passage').value = 'Genesis 1:7-2:1';
+        document.querySelector('#edit-tab-passage').dispatchEvent(new Event('input'));
         document.querySelector('#save-tab-passage-btn').click();
         expect(App.state.tabs).toHaveLength(1);
         expect(App.getTabLabel(tab)).toBe('GEN1:7-2:1');
@@ -1684,10 +1685,38 @@ describe('Tab options and navigation history', () => {
         expect(App.els.verseContent.querySelectorAll('.passage-selected')).toHaveLength(3);
     });
 
+    test('Update is enabled only for a valid passage that differs from the current range', () => {
+        const tab = openPassage();
+        App.showTabOptionsMenu(tab);
+        const input = document.querySelector('#edit-tab-passage');
+        const button = document.querySelector('#save-tab-passage-btn');
+        expect(button.textContent).toBe('Update');
+        expect(button.disabled).toBe(true);
+        for (const value of ['', 'Genesis', 'Genesis 999:1', 'GEN1:3-6', ' genesis 1:6-3 ']) {
+            input.value = value;
+            input.dispatchEvent(new Event('input'));
+            expect(button.disabled).toBe(true);
+            input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+            expect(App.getTabLabel(tab)).toBe('GEN1:3-6');
+        }
+        input.value = 'Genesis 1:4-7';
+        input.dispatchEvent(new Event('input'));
+        expect(button.disabled).toBe(false);
+        input.value = 'Genesis 1:3–6';
+        input.dispatchEvent(new Event('input'));
+        expect(button.disabled).toBe(true);
+        input.value = 'Genesis 1:4-7';
+        input.dispatchEvent(new Event('input'));
+        input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter' }));
+        expect(App.getTabLabel(tab)).toBe('GEN1:4-7');
+        expect(document.querySelector('.tab-options-overlay')).toBeNull();
+    });
+
     test('rejects an invalid range without changing the tab', () => {
         const tab = openPassage();
         App.showTabOptionsMenu(tab);
         document.querySelector('#edit-tab-passage').value = 'Genesis 999:1';
+        document.querySelector('#edit-tab-passage').dispatchEvent(new Event('input'));
         document.querySelector('#save-tab-passage-btn').click();
         expect(App.getTabLabel(tab)).toBe('GEN1:3-6');
         expect(document.querySelector('.passage-edit-error').hidden).toBe(false);

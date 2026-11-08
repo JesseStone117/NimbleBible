@@ -544,9 +544,11 @@ showTabOptionsMenu(tab) {
                 <p>Tab: ${this.getTabLabel(tab)}</p>
                 <div class="tab-options-buttons">
                     <label class="passage-edit-label" for="edit-tab-passage">Passage range</label>
-                    <input id="edit-tab-passage" class="passage-tabs-input" placeholder="John 3:16-18" autocomplete="off">
-                    <p class="passage-edit-error" role="alert" hidden></p>
-                    <button class="tab-options-action" id="save-tab-passage-btn">Update Passage Range</button>
+                    <div class="passage-edit-row">
+                        <input id="edit-tab-passage" class="passage-tabs-input" placeholder="John 3:16-18" autocomplete="off" aria-describedby="passage-edit-error">
+                        <button class="tab-options-action" id="save-tab-passage-btn" disabled>Update</button>
+                    </div>
+                    <p id="passage-edit-error" class="passage-edit-error" role="alert" hidden></p>
                     <button class="tab-options-action" id="copy-single-tab-btn">Copy Passage Reference</button>
                     <button class="tab-options-danger" id="close-single-tab-btn">Close Tab</button>
                     <button class="tab-options-cancel">Cancel</button>
@@ -560,15 +562,25 @@ showTabOptionsMenu(tab) {
             const end = { ...start, bookName: tab.endBookName || tab.bookName, chapterNumber: tab.endChapterNumber || tab.chapterNumber, verseNumber: tab.endVerseNumber || tab.verseRangeEnd || start.verseNumber };
             input.value = tab.verseNumber ? this.formatCollectionRange({ start, end }) : `${tab.bookName} ${tab.chapterNumber}`;
         }
-        const saveRange = () => {
+        const updateButton = overlay.querySelector('#save-tab-passage-btn');
+        const error = overlay.querySelector('.passage-edit-error');
+        const originalRange = this.parsePassageReference(input.value);
+        const validateInput = () => {
             const range = this.parsePassageReference(input.value);
-            if (!range) {
-                const error = overlay.querySelector('.passage-edit-error');
-                error.textContent = 'Enter a valid passage, such as John 3:16-18.';
-                error.hidden = false;
-                input.focus();
-                return;
-            }
+            const unchanged = range && originalRange && this.isSamePassagePoint(range.start, originalRange.start) &&
+                this.isSamePassagePoint(range.end, originalRange.end);
+            updateButton.disabled = !range || !!unchanged;
+            const invalid = !!input.value.trim() && !range;
+            input.setAttribute('aria-invalid', String(invalid));
+            error.textContent = invalid ? 'Enter a valid passage, such as John 3:16-18.' : '';
+            error.hidden = !invalid;
+            return updateButton.disabled ? null : range;
+        };
+        input.addEventListener('input', validateInput);
+        validateInput();
+        const saveRange = () => {
+            const range = validateInput();
+            if (!range) return;
             if (tab.id !== this.state.activeTabId) this.switchTab(tab.id);
             this.saveCurrentTabState();
             this.state.testament = range.start.testament;
@@ -582,7 +594,7 @@ showTabOptionsMenu(tab) {
             this.saveStateToLocalStorage();
             overlay.remove();
         };
-        overlay.querySelector('#save-tab-passage-btn').addEventListener('click', saveRange);
+        updateButton.addEventListener('click', saveRange);
         input.addEventListener('keydown', event => {
             if (event.key === 'Enter') saveRange();
         });

@@ -1070,8 +1070,9 @@ h1 {
     background: var(--secondary-bg);
     border-radius: 16px;
     padding: 24px;
-    min-width: 280px;
-    max-width: 90%;
+    width: min(440px, calc(100% - 24px));
+    min-width: 0;
+    max-width: calc(100% - 24px);
     text-align: center;
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.1);
@@ -1155,10 +1156,12 @@ h1 {
 
 /* Navigation menu and collection library */
 .header { padding: 8px 12px; gap: 4px; }
-.header .back-btn, .header .forward-btn { width: 32px; padding: 6px; margin-right: 0; }
+.header .back-btn, .header .forward-btn { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 44px; padding: 6px; margin: 0; }
+.header .back-btn svg, .header .forward-btn svg { display: block; width: 20px; height: 20px; flex-shrink: 0; }
+.header .forward-btn svg { transform: rotate(180deg); }
 .back-btn:disabled, .forward-btn:disabled { color: #666; cursor: default; }
 .header h1 { font-size: clamp(1rem, 4.6vw, 1.4rem); }
-.header .search-btn { margin-left: 0; }
+.header .search-btn { width: 44px; height: 44px; margin-left: 0; }
 .menu-btn, .panel-close {
     display: inline-flex;
     align-items: center;
@@ -1262,3 +1265,8 @@ h1 {
 .passage-edit-error { color: #ffb7b7; font-size: 0.9rem; margin: 0; }
 
 input.passage-tabs-input { min-height: 44px; }
+
+.passage-edit-row { display: flex; align-items: stretch; gap: 8px; }
+.passage-edit-row .passage-tabs-input { flex: 1; min-width: 0; width: 0; }
+.passage-edit-row .tab-options-action { flex-shrink: 0; width: auto; padding: 10px 14px; }
+.passage-edit-row .tab-options-action:disabled { background: #3a3a3a; color: #999; cursor: default; transform: none; }
